@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bounded_subprocess"
+version = "1.0.0"
+authors = [
+  { name="Arjun Guha" },
+  { name="Ming-Ho Yee" }
+]
+description = "A small example package"
+readme = "README.md"
+license = { file="LICENSE" }
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/nuprl/bounded_subprocess"
+"Bug Tracker" = "https://github.com/nuprl/bounded_subprocess"
