@@ -4,7 +4,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent / "evil_programs"
 
-
 def assert_no_running_evil():
     result = run(
         ["pgrep", "-f", ROOT], timeout_seconds=1, max_output_size=1024
@@ -100,4 +99,18 @@ def test_block_on_inputs():
     assert result.timeout == False
     assert len(result.stdout) == 0
     assert "EOF when reading a line" in result.stderr
+    assert_no_running_evil()
+
+def test_long_stdout():
+    # We run the subprocess with a very long print message. Check that it
+    # is not truncated in stdout.
+    result = run(
+        ["python3", ROOT / "long_stdout.py"],
+        timeout_seconds=10,
+        max_output_size=10000,
+    )
+    assert result.exit_code == 0
+    assert result.timeout == False
+    # leave some leeway space for encoding
+    assert 9500 <= len(result.stdout) <= 10500
     assert_no_running_evil()
