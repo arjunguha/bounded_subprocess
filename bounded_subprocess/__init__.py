@@ -69,9 +69,18 @@ def run(
         if this_stderr_read is not None and stderr_bytes_read < max_output_size:
             stderr_saved_bytes.append(this_stderr_read)
             stderr_bytes_read += len(this_stderr_read)
+        
         exit_code = p.poll()
         if exit_code is not None:
+            # finish reading output
+            this_stdout_read = p.stdout.read(max_output_size - stdout_bytes_read)
+            this_stderr_read = p.stderr.read(max_output_size - stderr_bytes_read)
+            if this_stdout_read is not None:
+                stdout_saved_bytes.append(this_stdout_read)
+            if this_stderr_read is not None:
+                stderr_saved_bytes.append(this_stderr_read)
             break
+        
         time.sleep(SLEEP_BETWEEN_READS)
 
     try:
