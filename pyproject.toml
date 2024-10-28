@@ -4,10 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bounded_subprocess"
-version = "1.0.0"
+version = "1.1.0"
 authors = [
   { name="Arjun Guha" },
-  { name="Ming-Ho Yee" }
+  { name="Ming-Ho Yee" },
+  { name="Francesca Lucchetti" }
 ]
 description = "A small example package"
 readme = "README.md"
