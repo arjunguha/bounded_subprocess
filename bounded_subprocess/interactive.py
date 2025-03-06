@@ -36,7 +36,20 @@ class Interactive:
         self._stdout_saved_bytes = bytearray()
         self._stderr_saved_bytes = bytearray()
         self._popen = popen
-        
+
+    def close_blocking(self, nice_timeout_seconds: int) -> int:
+        """
+        Close the process and wait for it to exit.
+        """
+        self._popen.stdin.close()
+        self._popen.stdout.close()
+        try:
+            self._popen.wait(timeout=nice_timeout_seconds)
+        except subprocess.TimeoutExpired:
+            self._popen.kill()
+            self._popen.wait()
+        return self._popen.returncode
+
     def write(self, stdin_data: bytes, timeout_seconds: int):
         """
         Write data to the process's stdin.

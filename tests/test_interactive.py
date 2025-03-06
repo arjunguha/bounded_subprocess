@@ -72,3 +72,42 @@ def test_dies_shortly_after_launch_2():
     time.sleep(2)
     assert p.read_line(timeout_seconds=1) is None
     assert p.read_line(timeout_seconds=1) is None
+
+
+@pytest.mark.timeout(5)
+def test_close_blocking_trivial():
+    p = Interactive(
+        ["python3", ROOT / "sleep_forever.py"],
+        read_buffer_size=1,
+    )
+    # -9 indicates that the child was killed with SIGKILL.
+    assert p.close_blocking(1) == -9
+
+@pytest.mark.timeout(5)
+def test_close_blocking_when_child_writes_forever():
+    p = Interactive(
+        ["python3", ROOT / "write_forever_but_no_newline.py"],
+        read_buffer_size=1,
+    )
+    # The child will do a non-normal exit because it fails to write. But,
+    # it will not be killed by a signal.
+    assert p.close_blocking(1) > 0
+
+@pytest.mark.timeout(5)
+def test_double_close():
+    p = Interactive(
+        ["python3", ROOT / "sleep_forever.py"],
+        read_buffer_size=1,
+    )
+    assert p.close_blocking(1) == -9
+    # The child is already dead, so this should be a no-op.
+    assert p.close_blocking(1) == -9
+
+@pytest.mark.timeout(5)
+def test_close_after_normal_exit():
+    p = Interactive(
+        ["python3", ROOT / "dies_shortly_after_launch.py"],
+        read_buffer_size=1,
+    )
+    time.sleep(2)
+    assert p.close_blocking(1) == 1
