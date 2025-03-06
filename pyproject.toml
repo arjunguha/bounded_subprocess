@@ -14,7 +14,7 @@ description = "A small example package"
 readme = "README.md"
 license = { file="LICENSE" }
 requires-python = ">=3.8"
-requires =[
+dependencies =[
   "typeguard>=4.4.2,<5.0.0"
 ]
 classifiers = [
