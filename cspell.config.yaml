@@ -10,5 +10,7 @@ words:
 - SETFL
 - NONBLOCK
 - getpgid
+- typeguard
+- tobytes
 ignoreWords: []
 import: []
