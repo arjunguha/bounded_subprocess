@@ -72,9 +72,12 @@ def run(
         
         exit_code = p.poll()
         if exit_code is not None:
-            # finish reading output
-            this_stdout_read = p.stdout.read(max_output_size - stdout_bytes_read)
-            this_stderr_read = p.stderr.read(max_output_size - stderr_bytes_read)
+            # Finish reading output if needed.
+            left_to_read = max_output_size - stdout_bytes_read
+            if left_to_read <= 0:
+                break
+            this_stdout_read = p.stdout.read(left_to_read)
+            this_stderr_read = p.stderr.read(left_to_read)
             if this_stdout_read is not None:
                 stdout_saved_bytes.append(this_stdout_read)
             if this_stderr_read is not None:
