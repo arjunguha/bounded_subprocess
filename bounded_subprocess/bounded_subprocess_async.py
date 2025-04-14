@@ -20,7 +20,7 @@ async def run(
     # async here? It's just the sleep between reads.
     state = BoundedSubprocessState(args, env, max_output_size)
 
-   # We sleep for 0.1 seconds in each iteration.
+    # We sleep for 0.1 seconds in each iteration.
     max_iterations = timeout_seconds * 10
 
     for _ in range(max_iterations):
@@ -29,5 +29,5 @@ async def run(
             await asyncio.sleep(SLEEP_BETWEEN_READS)
         else:
             break
-    
+
     return state.terminate()

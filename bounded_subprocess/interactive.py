@@ -87,7 +87,7 @@ class Interactive:
         if newline_index == -1:
             return None
         # memoryview helps avoid a pointless copy
-        line = memoryview(self._stdout_saved_bytes)[: newline_index].tobytes()
+        line = memoryview(self._stdout_saved_bytes)[:newline_index].tobytes()
         del self._stdout_saved_bytes[: newline_index + 1]
         return line
 
@@ -116,7 +116,9 @@ class Interactive:
             if from_saved_bytes is not None:
                 return from_saved_bytes
             if len(self._stdout_saved_bytes) > self._read_buffer_size:
-                del self._stdout_saved_bytes[:len(self._stdout_saved_bytes) - self._read_buffer_size]
+                del self._stdout_saved_bytes[
+                    : len(self._stdout_saved_bytes) - self._read_buffer_size
+                ]
             time.sleep(_SLEEP_AFTER_WOUND_BLOCK)
 
         return None

@@ -3,9 +3,12 @@ from typing import List
 
 from .util import Result, BoundedSubprocessState, SLEEP_BETWEEN_READS
 
+
 def run(
-    args: List[str], timeout_seconds: int = 15, max_output_size: int = 2048,
-    env = None,
+    args: List[str],
+    timeout_seconds: int = 15,
+    max_output_size: int = 2048,
+    env=None,
 ) -> Result:
     """
     Runs the given program with arguments. After the timeout elapses, kills the process
@@ -23,5 +26,5 @@ def run(
             time.sleep(SLEEP_BETWEEN_READS)
         else:
             break
-    
+
     return state.terminate()
