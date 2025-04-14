@@ -3,7 +3,7 @@ from typing import List, Optional
 import time
 import errno
 import subprocess
-from . import set_nonblocking
+from .util import set_nonblocking
 
 
 _MAX_BYTES_PER_READ = 1024
