@@ -14,6 +14,8 @@ def test_does_not_read():
     # The Linux buffer size is 64KB. This should make us block, unless we
     # set timeouts appropriately.
     assert not p.write(b"x" * 128 * 1024, timeout_seconds=5)
+    assert p.close(1) == -9
+
 
 
 def test_dies_shortly_after_launch():
@@ -75,23 +77,23 @@ def test_dies_shortly_after_launch_2():
 
 
 @pytest.mark.timeout(5)
-def test_close_blocking_trivial():
+def test_close_trivial():
     p = Interactive(
         ["python3", ROOT / "sleep_forever.py"],
         read_buffer_size=1,
     )
     # -9 indicates that the child was killed with SIGKILL.
-    assert p.close_blocking(1) == -9
+    assert p.close(1) == -9
 
 @pytest.mark.timeout(5)
-def test_close_blocking_when_child_writes_forever():
+def test_close_when_child_writes_forever():
     p = Interactive(
         ["python3", ROOT / "write_forever_but_no_newline.py"],
         read_buffer_size=1,
     )
     # The child will do a non-normal exit because it fails to write. But,
     # it will not be killed by a signal.
-    assert p.close_blocking(1) > 0
+    assert p.close(1) > 0
 
 @pytest.mark.timeout(5)
 def test_double_close():
@@ -99,9 +101,9 @@ def test_double_close():
         ["python3", ROOT / "sleep_forever.py"],
         read_buffer_size=1,
     )
-    assert p.close_blocking(1) == -9
+    assert p.close(1) == -9
     # The child is already dead, so this should be a no-op.
-    assert p.close_blocking(1) == -9
+    assert p.close(1) == -9
 
 @pytest.mark.timeout(5)
 def test_close_after_normal_exit():
@@ -110,4 +112,4 @@ def test_close_after_normal_exit():
         read_buffer_size=1,
     )
     time.sleep(2)
-    assert p.close_blocking(1) == 1
+    assert p.close(1) == 1

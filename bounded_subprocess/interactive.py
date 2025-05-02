@@ -37,18 +37,25 @@ class Interactive:
         self._stderr_saved_bytes = bytearray()
         self._popen = popen
 
-    def close_blocking(self, nice_timeout_seconds: int) -> int:
+    def close(self, nice_timeout_seconds: int) -> int:
         """
         Close the process and wait for it to exit.
         """
-        self._popen.stdin.close()
-        self._popen.stdout.close()
         try:
-            self._popen.wait(timeout=nice_timeout_seconds)
-        except subprocess.TimeoutExpired:
-            self._popen.kill()
-            self._popen.wait()
-        return self._popen.returncode
+            self._popen.stdin.close()
+        except BlockingIOError:
+            # .close() will attempt to flush any buffered writes to stdout
+            # before the close returns. This may block, but since the file
+            # descriptor is non-blocking, we get a BlockingIOError.
+            pass
+        self._popen.stdout.close()
+        for _ in range(nice_timeout_seconds):
+            if self._popen.poll() is not None:
+                break
+            time.sleep(1)
+        self._popen.kill()
+        return_code = self._popen.returncode
+        return return_code if return_code is not None else -9
 
     def write(self, stdin_data: bytes, timeout_seconds: int):
         """
