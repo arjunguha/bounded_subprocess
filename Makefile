@@ -4,7 +4,7 @@ build:
 	uv build
 
 publish:
-	 python3 -m twine upload dist/*
+	 uv publish
 
 test:
 	uv run python -m pytest -m "not unsafe"
