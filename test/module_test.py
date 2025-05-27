@@ -1,6 +1,7 @@
 from bounded_subprocess import run
 import time
 from pathlib import Path
+import pytest
 
 ROOT = Path(__file__).resolve().parent / "evil_programs"
 
@@ -70,6 +71,7 @@ def test_sleep_forever():
     assert_no_running_evil()
 
 
+@pytest.mark.unsafe
 def test_fork_bomb():
     result = run(
         ["python3", ROOT / "fork_bomb.py"],
