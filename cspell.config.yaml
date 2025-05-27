@@ -12,5 +12,11 @@ words:
 - getpgid
 - typeguard
 - tobytes
+- Arjun
+- Guha
+- pytest
+- Lucchetti
+- pythonpath
+- asyncio
 ignoreWords: []
 import: []

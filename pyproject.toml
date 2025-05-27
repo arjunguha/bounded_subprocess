@@ -1,19 +1,15 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "bounded_subprocess"
-version = "1.4.0"
+version = "1.5.0"
 authors = [
   { name="Arjun Guha" },
   { name="Ming-Ho Yee" },
   { name="Francesca Lucchetti" }
 ]
-description = "A small example package"
+description = "A library to facilitate running subprocesses that may misbehave."
 readme = "README.md"
-license = { file="LICENSE" }
-requires-python = ">=3.8"
+license = { file="LICENSE.txt" }
+requires-python = ">=3.9"
 dependencies =[
   "typeguard>=4.4.2,<5.0.0"
 ]
@@ -23,6 +19,20 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
 ]
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
 [project.urls]
-"Homepage" = "https://github.com/nuprl/bounded_subprocess"
-"Bug Tracker" = "https://github.com/nuprl/bounded_subprocess"
+"Homepage" = "https://github.com/arjunguha/bounded_subprocess"
+"Bug Tracker" = "https://github.com/arjunguha/bounded_subprocess"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-asyncio>=1.0.0",
+    "pytest-timeout>=2.4.0",
+]

@@ -1,11 +1,10 @@
+.PHONY: test build publish
+
 build:
-	python3 -m build
+	uv build
 
 publish:
 	 python3 -m twine upload dist/*
 
 test:
-	python3 -m pytest
-
-build_deps:
-	python3 -m pip install build twine
+	uv run python -m pytest
