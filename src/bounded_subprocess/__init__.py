@@ -1,30 +1,34 @@
-import time
-from typing import List
+"""
+Bounded subprocess execution with timeout and output limits.
 
-from .util import Result, BoundedSubprocessState, SLEEP_BETWEEN_READS
+This package provides convenient functions for running subprocesses with bounded
+execution time and output size, with support for both synchronous and asynchronous
+execution patterns.
+"""
 
+__version__ = "1.0.0"
 
-def run(
-    args: List[str],
-    timeout_seconds: int = 15,
-    max_output_size: int = 2048,
-    env=None,
-) -> Result:
-    """
-    Runs the given program with arguments. After the timeout elapses, kills the process
-    and all other processes in the process group. Captures at most max_output_size bytes
-    of stdout and stderr each, and discards any output beyond that.
-    """
-    state = BoundedSubprocessState(args, env, max_output_size)
+# Lazy imports for better startup performance
+def __getattr__(name):
+    if name == "run":
+        from .bounded_subprocess import run
+        return run
+    elif name == "Result":
+        from .util import Result
+        return Result
+    elif name == "BoundedSubprocessState": 
+        from .util import BoundedSubprocessState
+        return BoundedSubprocessState
+    elif name == "SLEEP_BETWEEN_READS":
+        from .util import SLEEP_BETWEEN_READS
+        return SLEEP_BETWEEN_READS
+    else:
+        raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
-    # We sleep for 0.1 seconds in each iteration.
-    max_iterations = timeout_seconds * 10
-
-    for _ in range(max_iterations):
-        keep_reading = state.try_read()
-        if keep_reading:
-            time.sleep(SLEEP_BETWEEN_READS)
-        else:
-            break
-
-    return state.terminate()
+# Expose key classes and constants for convenience
+__all__ = [
+    "run",
+    "Result", 
+    "BoundedSubprocessState",
+    "SLEEP_BETWEEN_READS"
+]
