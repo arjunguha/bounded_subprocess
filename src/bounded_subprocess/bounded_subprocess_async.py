@@ -3,7 +3,7 @@ from typing import List
 from .util import Result, BoundedSubprocessState, SLEEP_BETWEEN_READS
 
 
-async def run(
+async def run_async(
     args: List[str],
     timeout_seconds: int = 15,
     max_output_size: int = 2048,
