@@ -3,129 +3,129 @@ from typing import List, Optional
 import time
 import errno
 import subprocess
-from .util import set_nonblocking
+from .util import set_nonblocking, MAX_BYTES_PER_READ
 
-
-_MAX_BYTES_PER_READ = 1024
 _SLEEP_AFTER_WOUND_BLOCK = 0.5
 
 
-@typechecked
-class Interactive:
-    """
-    A class for interacting with a subprocess that is careful to use non-blocking
-    I/O so that we can timeout reads and writes.
-    """
+class _InteractiveState:
+    """Shared implementation for synchronous and asynchronous interaction."""
 
-    def __init__(self, args: List[str], read_buffer_size: int):
-        """
-        read_buffer_size is the maximum number of bytes to read from stdout
-        and stdout each. If the process writes more than this, the extra bytes
-        will be discarded.
-        """
+    def __init__(self, args: List[str], read_buffer_size: int) -> None:
         popen = subprocess.Popen(
             args,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            # stderr=subprocess.PIPE,
-            bufsize=_MAX_BYTES_PER_READ,
+            bufsize=MAX_BYTES_PER_READ,
         )
         set_nonblocking(popen.stdin)
         set_nonblocking(popen.stdout)
-        self._read_buffer_size = read_buffer_size
-        self._stdout_saved_bytes = bytearray()
-        self._stderr_saved_bytes = bytearray()
-        self._popen = popen
+        self.popen = popen
+        self.read_buffer_size = read_buffer_size
+        self.stdout_saved_bytes = bytearray()
 
-    def close(self, nice_timeout_seconds: int) -> int:
-        """
-        Close the process and wait for it to exit.
-        """
+    # --- low level helpers -------------------------------------------------
+    def poll(self) -> Optional[int]:
+        return self.popen.poll()
+
+    def close_pipes(self) -> None:
         try:
-            self._popen.stdin.close()
+            self.popen.stdin.close()
         except BlockingIOError:
-            # .close() will attempt to flush any buffered writes to stdout
-            # before the close returns. This may block, but since the file
-            # descriptor is non-blocking, we get a BlockingIOError.
             pass
-        self._popen.stdout.close()
-        for _ in range(nice_timeout_seconds):
-            if self._popen.poll() is not None:
-                break
-            time.sleep(1)
-        self._popen.kill()
-        return_code = self._popen.returncode
-        return return_code if return_code is not None else -9
+        self.popen.stdout.close()
 
-    def write(self, stdin_data: bytes, timeout_seconds: int):
-        """
-        Write data to the process's stdin.
-        """
-        if self._popen.poll() is not None:
-            return False
+    def kill(self) -> None:
+        self.popen.kill()
 
-        write_start_index = 0
-        start_time = time.time()
-        while write_start_index < len(stdin_data):
-            try:
-                bytes_written = self._popen.stdin.write(stdin_data[write_start_index:])
-                self._popen.stdin.flush()
-            except BlockingIOError as exn:
-                if exn.errno != errno.EAGAIN:
-                    return False
-                bytes_written = exn.characters_written
-                time.sleep(_SLEEP_AFTER_WOUND_BLOCK)
-            except BrokenPipeError:
-                # The child has closed stdin. It is likely dead.
-                return False
-            write_start_index += bytes_written
-            if time.time() - start_time > timeout_seconds:
-                return False
-        return True
+    def return_code(self) -> int:
+        rc = self.popen.returncode
+        return rc if rc is not None else -9
 
-    def _read_line_from_saved_bytes(self, newline_search_index: int) -> Optional[bytes]:
-        """
-        Try to read a line of output from the buffer of stdout that this object
-        manages itself. The newline_search_index to indicate where to  start
-        looking for b"\n". Typically will be 0, but there are cases where we
-        are certain that the the newline is not in a prefix.
-        """
-        newline_index = self._stdout_saved_bytes.find(b"\n", newline_search_index)
+    def write_chunk(self, data: memoryview) -> tuple[int, bool]:
+        try:
+            written = self.popen.stdin.write(data)
+            self.popen.stdin.flush()
+            return written, True
+        except BlockingIOError as exn:
+            if exn.errno != errno.EAGAIN:
+                return exn.characters_written, False
+            return exn.characters_written, True
+        except BrokenPipeError:
+            return 0, False
+
+    def read_chunk(self) -> Optional[bytes]:
+        return self.popen.stdout.read(MAX_BYTES_PER_READ)
+
+    def pop_line(self, start_idx: int) -> Optional[bytes]:
+        newline_index = self.stdout_saved_bytes.find(b"\n", start_idx)
         if newline_index == -1:
             return None
-        # memoryview helps avoid a pointless copy
-        line = memoryview(self._stdout_saved_bytes)[:newline_index].tobytes()
-        del self._stdout_saved_bytes[: newline_index + 1]
+        line = memoryview(self.stdout_saved_bytes)[:newline_index].tobytes()
+        del self.stdout_saved_bytes[: newline_index + 1]
         return line
 
+    def append_stdout(self, data: bytes) -> None:
+        self.stdout_saved_bytes.extend(data)
+
+    def trim_stdout(self) -> None:
+        if len(self.stdout_saved_bytes) > self.read_buffer_size:
+            del self.stdout_saved_bytes[: len(self.stdout_saved_bytes) - self.read_buffer_size]
+
+
+@typechecked
+class Interactive:
+    """Interact with a subprocess using non-blocking I/O."""
+
+    def __init__(self, args: List[str], read_buffer_size: int) -> None:
+        self._state = _InteractiveState(args, read_buffer_size)
+
+    def close(self, nice_timeout_seconds: int) -> int:
+        self._state.close_pipes()
+        for _ in range(nice_timeout_seconds):
+            if self._state.poll() is not None:
+                break
+            time.sleep(1)
+        self._state.kill()
+        return self._state.return_code()
+
+    def write(self, stdin_data: bytes, timeout_seconds: int) -> bool:
+        if self._state.poll() is not None:
+            return False
+        mv = memoryview(stdin_data)
+        start = 0
+        start_time = time.time()
+        while start < len(stdin_data):
+            written, keep_going = self._state.write_chunk(mv[start:])
+            start += written
+            if not keep_going:
+                return False
+            if start < len(stdin_data):
+                if time.time() - start_time > timeout_seconds:
+                    return False
+                time.sleep(_SLEEP_AFTER_WOUND_BLOCK)
+        return True
+
     def read_line(self, timeout_seconds: int) -> Optional[bytes]:
-        """
-        Read a line from the process's stdout.
-        """
-        from_saved_bytes = self._read_line_from_saved_bytes(0)
-        if from_saved_bytes is not None:
-            return from_saved_bytes
-        if self._popen.poll() is not None:
+        line = self._state.pop_line(0)
+        if line is not None:
+            return line
+        if self._state.poll() is not None:
             return None
         deadline = time.time() + timeout_seconds
         while time.time() < deadline:
-            new_bytes = self._popen.stdout.read(_MAX_BYTES_PER_READ)
-            # If the read would block, we get None and not zero bytes on MacOS.
+            new_bytes = self._state.read_chunk()
             if new_bytes is None:
                 time.sleep(_SLEEP_AFTER_WOUND_BLOCK)
                 continue
-            # If we read 0 bytes, the child has closed stdout and is likely dead.
             if len(new_bytes) == 0:
                 return None
-            prev_saved_bytes_len = len(self._stdout_saved_bytes)
-            self._stdout_saved_bytes.extend(new_bytes)
-            from_saved_bytes = self._read_line_from_saved_bytes(prev_saved_bytes_len)
-            if from_saved_bytes is not None:
-                return from_saved_bytes
-            if len(self._stdout_saved_bytes) > self._read_buffer_size:
-                del self._stdout_saved_bytes[
-                    : len(self._stdout_saved_bytes) - self._read_buffer_size
-                ]
+            prev_len = len(self._state.stdout_saved_bytes)
+            self._state.append_stdout(new_bytes)
+            line = self._state.pop_line(prev_len)
+            if line is not None:
+                return line
+            self._state.trim_stdout()
             time.sleep(_SLEEP_AFTER_WOUND_BLOCK)
-
         return None
+
