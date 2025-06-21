@@ -1,6 +1,12 @@
 import asyncio
-from typing import List
-from .util import Result, BoundedSubprocessState, SLEEP_BETWEEN_READS
+from typing import List, Optional
+from .util import (
+    Result,
+    BoundedSubprocessState,
+    SLEEP_BETWEEN_READS,
+    write_loop_async,
+    _STDIN_WRITE_TIMEOUT,
+)
 
 
 async def run(
@@ -8,6 +14,7 @@ async def run(
     timeout_seconds: int = 15,
     max_output_size: int = 2048,
     env=None,
+    stdin_data: Optional[str] = None,
 ) -> Result:
     """
     Runs the given program with arguments. After the timeout elapses, kills the process
@@ -18,7 +25,15 @@ async def run(
     # were going to use asyncio.create_subprocess_exec. But, we're not. We're
     # using subprocess.Popen because it supports non-blocking reads. What's
     # async here? It's just the sleep between reads.
-    state = BoundedSubprocessState(args, env, max_output_size)
+    state = BoundedSubprocessState(args, env, max_output_size, stdin_data is not None)
+    if stdin_data is not None:
+        await write_loop_async(
+            state.write_chunk,
+            stdin_data.encode(),
+            _STDIN_WRITE_TIMEOUT,
+            sleep_interval=SLEEP_BETWEEN_READS,
+        )
+        state.close_stdin()
 
     # We sleep for 0.1 seconds in each iteration.
     max_iterations = timeout_seconds * 10
@@ -31,3 +46,4 @@ async def run(
             break
 
     return state.terminate()
+
