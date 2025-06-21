@@ -72,3 +72,34 @@ async def test_concurrent_sleep():
     assert all(len(r.stderr) == 0 for r in results)
     assert time.time() - start_time < 1.1
     await assert_no_running_evil()
+
+
+@pytest.mark.asyncio
+async def test_stdin_data_async_does_not_read():
+    data = "hello async\n"
+    result = await run(
+        ["python3", ROOT / "does_not_read.py"],
+        timeout_seconds=2,
+        max_output_size=1024,
+        stdin_data=data,
+    )
+    assert result.exit_code == -1
+    assert result.timeout is True
+    assert len(result.stdout) == 0
+    assert len(result.stderr) == 0
+    await assert_no_running_evil()
+
+
+@pytest.mark.asyncio
+async def test_stdin_data_async_echo():
+    data = "hello async\n"
+    result = await run(
+        ["python3", ROOT / "echo_stdin.py"],
+        timeout_seconds=2,
+        max_output_size=1024,
+        stdin_data=data,
+    )
+    assert result.exit_code == 0
+    assert result.timeout is False
+    assert result.stdout == data
+    await assert_no_running_evil()

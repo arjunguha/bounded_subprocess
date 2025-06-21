@@ -117,3 +117,32 @@ def test_long_stdout():
     # leave some leeway space for encoding
     assert 9500 <= len(result.stdout) <= 10500
     assert_no_running_evil()
+
+
+def test_stdin_data_does_not_read():
+    data = "hello world\n"
+    result = run(
+        ["python3", ROOT / "does_not_read.py"],
+        timeout_seconds=2,
+        max_output_size=1024,
+        stdin_data=data,
+    )
+    assert result.exit_code == -1
+    assert result.timeout is True
+    assert len(result.stdout) == 0
+    assert len(result.stderr) == 0
+    assert_no_running_evil()
+
+
+def test_stdin_data_echo():
+    data = "hello world\n"
+    result = run(
+        ["python3", ROOT / "echo_stdin.py"],
+        timeout_seconds=2,
+        max_output_size=1024,
+        stdin_data=data,
+    )
+    assert result.exit_code == 0
+    assert result.timeout is False
+    assert result.stdout == data
+    assert_no_running_evil()

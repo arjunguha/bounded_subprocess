@@ -4,6 +4,7 @@ import asyncio
 import time
 
 from .interactive import _InteractiveState, _SLEEP_AFTER_WOUND_BLOCK
+from .util import write_loop_async
 
 
 @typechecked
@@ -25,19 +26,12 @@ class Interactive:
     async def write(self, stdin_data: bytes, timeout_seconds: int) -> bool:
         if self._state.poll() is not None:
             return False
-        mv = memoryview(stdin_data)
-        start = 0
-        start_time = time.time()
-        while start < len(stdin_data):
-            written, keep_going = self._state.write_chunk(mv[start:])
-            start += written
-            if not keep_going:
-                return False
-            if start < len(stdin_data):
-                if time.time() - start_time > timeout_seconds:
-                    return False
-                await asyncio.sleep(_SLEEP_AFTER_WOUND_BLOCK)
-        return True
+        return await write_loop_async(
+            self._state.write_chunk,
+            stdin_data,
+            timeout_seconds,
+            sleep_interval=_SLEEP_AFTER_WOUND_BLOCK,
+        )
 
     async def read_line(self, timeout_seconds: int) -> Optional[bytes]:
         line = self._state.pop_line(0)

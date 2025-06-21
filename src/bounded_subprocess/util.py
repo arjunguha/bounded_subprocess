@@ -2,9 +2,14 @@ import subprocess
 import os
 import fcntl
 import signal
+from typing import Callable, Optional
+import errno
+import time
+import asyncio
 
 MAX_BYTES_PER_READ = 1024
 SLEEP_BETWEEN_READS = 0.1
+_STDIN_WRITE_TIMEOUT = 1.0
 
 
 class Result:
@@ -26,20 +31,79 @@ def set_nonblocking(reader):
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
 
-class BoundedSubprocessState:
-    """
-    This class lets us share code between the synchronous and asynchronous
-    implementations.
-    """
+def popen_write_chunk(p: subprocess.Popen, data: memoryview) -> tuple[int, bool]:
+    """Try writing a chunk of bytes to a non-blocking Popen stdin."""
+    try:
+        written = p.stdin.write(data)
+        p.stdin.flush()
+        if written is None:
+            written = 0
+        return written, True
+    except BlockingIOError as exn:
+        if exn.errno != errno.EAGAIN:
+            return exn.characters_written, False
+        return exn.characters_written, True
+    except BrokenPipeError:
+        return 0, False
 
-    def __init__(self, args, env, max_output_size):
+
+def write_loop_sync(
+    write_chunk: Callable[[memoryview], tuple[int, bool]],
+    data: bytes,
+    timeout_seconds: float,
+    *,
+    sleep_interval: float,
+) -> bool:
+    """Repeatedly write data using write_chunk until complete or timeout."""
+    mv = memoryview(data)
+    start = 0
+    start_time = time.time()
+    while start < len(mv):
+        written, keep_going = write_chunk(mv[start:])
+        start += written
+        if not keep_going:
+            return False
+        if start < len(mv):
+            if time.time() - start_time > timeout_seconds:
+                return False
+            time.sleep(sleep_interval)
+    return True
+
+
+async def write_loop_async(
+    write_chunk: Callable[[memoryview], tuple[int, bool]],
+    data: bytes,
+    timeout_seconds: float,
+    *,
+    sleep_interval: float,
+) -> bool:
+    """Asynchronously write data until complete or timeout."""
+    mv = memoryview(data)
+    start = 0
+    start_time = time.time()
+    while start < len(mv):
+        written, keep_going = write_chunk(mv[start:])
+        start += written
+        if not keep_going:
+            return False
+        if start < len(mv):
+            if time.time() - start_time > timeout_seconds:
+                return False
+            await asyncio.sleep(sleep_interval)
+    return True
+
+
+class BoundedSubprocessState:
+    """State shared between synchronous and asynchronous subprocess helpers."""
+
+    def __init__(self, args, env, max_output_size, use_stdin_pipe: bool = False):
         """
         Start the process in a new session.
         """
         p = subprocess.Popen(
             args,
             env=env,
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.PIPE if use_stdin_pipe else subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             start_new_session=True,
@@ -47,6 +111,8 @@ class BoundedSubprocessState:
         )
         set_nonblocking(p.stdout)
         set_nonblocking(p.stderr)
+        if use_stdin_pipe:
+            set_nonblocking(p.stdin)
 
         self.process_group_id = os.getpgid(p.pid)
         self.p = p
@@ -56,6 +122,30 @@ class BoundedSubprocessState:
         self.stdout_bytes_read = 0
         self.stderr_bytes_read = 0
         self.max_output_size = max_output_size
+
+    def write_chunk(self, data: memoryview) -> tuple[int, bool]:
+        if self.p.stdin is None:
+            return 0, False
+        try:
+            written = self.p.stdin.write(data)
+            self.p.stdin.flush()
+            if written is None:
+                written = 0
+            return written, True
+        except BlockingIOError as exn:
+            if exn.errno != errno.EAGAIN:
+                return exn.characters_written, False
+            return exn.characters_written, True
+        except BrokenPipeError:
+            return 0, False
+
+    def close_stdin(self) -> None:
+        if self.p.stdin is None:
+            return
+        try:
+            self.p.stdin.close()
+        except BrokenPipeError:
+            pass
 
     def try_read(self) -> bool:
         """

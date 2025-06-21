@@ -3,7 +3,7 @@ from typing import List, Optional
 import time
 import errno
 import subprocess
-from .util import set_nonblocking, MAX_BYTES_PER_READ
+from .util import set_nonblocking, MAX_BYTES_PER_READ, write_loop_sync
 
 _SLEEP_AFTER_WOUND_BLOCK = 0.5
 
@@ -92,19 +92,12 @@ class Interactive:
     def write(self, stdin_data: bytes, timeout_seconds: int) -> bool:
         if self._state.poll() is not None:
             return False
-        mv = memoryview(stdin_data)
-        start = 0
-        start_time = time.time()
-        while start < len(stdin_data):
-            written, keep_going = self._state.write_chunk(mv[start:])
-            start += written
-            if not keep_going:
-                return False
-            if start < len(stdin_data):
-                if time.time() - start_time > timeout_seconds:
-                    return False
-                time.sleep(_SLEEP_AFTER_WOUND_BLOCK)
-        return True
+        return write_loop_sync(
+            self._state.write_chunk,
+            stdin_data,
+            timeout_seconds,
+            sleep_interval=_SLEEP_AFTER_WOUND_BLOCK,
+        )
 
     def read_line(self, timeout_seconds: int) -> Optional[bytes]:
         line = self._state.pop_line(0)
