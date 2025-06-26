@@ -9,7 +9,7 @@ from .util import (
 )
 
 
-async def run(
+async def run_async(
     args: List[str],
     timeout_seconds: int = 15,
     max_output_size: int = 2048,
