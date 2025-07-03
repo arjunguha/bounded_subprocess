@@ -9,7 +9,7 @@ import asyncio
 
 MAX_BYTES_PER_READ = 1024
 SLEEP_BETWEEN_READS = 0.1
-_STDIN_WRITE_TIMEOUT = 1.0
+_STDIN_WRITE_TIMEOUT = 3
 
 
 class Result:
@@ -146,6 +146,20 @@ class BoundedSubprocessState:
             self.p.stdin.close()
         except BrokenPipeError:
             pass
+
+    async def close_stdin_async(self, timeout: int) -> None:
+        if self.p.stdin is None:
+            return
+        for _ in range(timeout):
+            try:
+                self.p.stdin.close()
+                return
+            except BlockingIOError:
+                await asyncio.sleep(1)
+            except BrokenPipeError:
+                return
+
+
 
     def try_read(self) -> bool:
         """

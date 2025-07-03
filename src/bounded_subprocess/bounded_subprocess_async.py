@@ -33,7 +33,7 @@ async def run(
             _STDIN_WRITE_TIMEOUT,
             sleep_interval=SLEEP_BETWEEN_READS,
         )
-        state.close_stdin()
+        await state.close_stdin_async(_STDIN_WRITE_TIMEOUT)
 
     # We sleep for 0.1 seconds in each iteration.
     max_iterations = timeout_seconds * 10
