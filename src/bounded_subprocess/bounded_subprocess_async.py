@@ -6,6 +6,7 @@ from .util import (
     SLEEP_BETWEEN_READS,
     write_loop_async,
     _STDIN_WRITE_TIMEOUT,
+    SLEEP_BETWEEN_WRITES,
 )
 
 
@@ -15,6 +16,7 @@ async def run(
     max_output_size: int = 2048,
     env=None,
     stdin_data: Optional[str] = None,
+    stdin_write_timeout: Optional[int] = None,
 ) -> Result:
     """
     Runs the given program with arguments. After the timeout elapses, kills the process
@@ -27,12 +29,15 @@ async def run(
     # async here? It's just the sleep between reads.
     state = BoundedSubprocessState(args, env, max_output_size, stdin_data is not None)
     if stdin_data is not None:
-        await write_loop_async(
+        ok = await write_loop_async(
             state.write_chunk,
             stdin_data.encode(),
-            _STDIN_WRITE_TIMEOUT,
-            sleep_interval=SLEEP_BETWEEN_READS,
+            stdin_write_timeout if stdin_write_timeout is not None else 15,
+            sleep_interval=SLEEP_BETWEEN_WRITES,
         )
+        if not ok:
+            state.terminate()
+            return Result(True, -1, "", "failed to write to stdin")
         await state.close_stdin_async(_STDIN_WRITE_TIMEOUT)
 
     # We sleep for 0.1 seconds in each iteration.
