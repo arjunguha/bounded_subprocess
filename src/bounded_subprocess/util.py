@@ -94,6 +94,59 @@ async def write_loop_async(
     return True
 
 
+async def can_write(fd):
+    """
+    Waits for the file descriptor to be writable.
+    """
+    future = asyncio.Future()
+    loop  = asyncio.get_running_loop()
+    loop.add_writer(fd, future.set_result, None)
+    future.add_done_callback(lambda f: loop.remove_writer(fd))
+    await future
+
+
+async def write_nonblocking_async(*, fd, data: bytes, timeout_seconds: int) -> bool:
+    """
+    Writes to a nonblocking file descriptor with the timeout.
+
+    Returns True if all the data was written. False indicates that there was
+    either a timeout or a broken pipe.
+    """
+    start_time_seconds = time.time()
+
+    # A slice, data[..], would create a copy. A memoryview does not.
+    mv = memoryview(data)
+    start = 0
+    while start < len(mv):
+        try:
+            # Write as much as possible without blocking.
+            written = fd.write(mv[start:])
+            if written is None:
+                written = 0
+            start = start + written
+        except BrokenPipeError:
+            return False
+        except BlockingIOError as exn:
+            if exn.errno != errno.EAGAIN:
+                # NOTE(arjun): I am not certain why this would happen. However,
+                # you are only supposed to retry on EAGAIN.
+                return False
+            # Some, but not all the bytes were written.
+            start = start + exn.characters_written
+            
+            # Compute how much more time we have left.
+            wait_timeout = timeout_seconds - (time.time() - start_time_seconds)
+            # We are already past the deadline, so abort.
+            if wait_timeout <= 0:
+                return False
+            try:
+                await asyncio.wait_for(can_write(fd), wait_timeout)
+            except asyncio.TimeoutError:
+                # Deadline elapsed, so abort.
+                return False
+
+    return True
+
 class BoundedSubprocessState:
     """State shared between synchronous and asynchronous subprocess helpers."""
 

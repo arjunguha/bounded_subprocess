@@ -4,9 +4,8 @@ from .util import (
     Result,
     BoundedSubprocessState,
     SLEEP_BETWEEN_READS,
-    write_loop_async,
+    write_nonblocking_async,
     _STDIN_WRITE_TIMEOUT,
-    SLEEP_BETWEEN_WRITES,
 )
 
 
@@ -29,16 +28,15 @@ async def run(
     # async here? It's just the sleep between reads.
     state = BoundedSubprocessState(args, env, max_output_size, stdin_data is not None)
     if stdin_data is not None:
-        ok = await write_loop_async(
-            state.write_chunk,
-            stdin_data.encode(),
-            stdin_write_timeout if stdin_write_timeout is not None else 15,
-            sleep_interval=SLEEP_BETWEEN_WRITES,
+        write_ok = await write_nonblocking_async(
+            fd=state.p.stdin,
+            data=stdin_data.encode(),
+            timeout_seconds=stdin_write_timeout if stdin_write_timeout is not None else 15,
         )
-        if not ok:
-            state.terminate()
-            return Result(True, -1, "", "failed to write to stdin")
         await state.close_stdin_async(_STDIN_WRITE_TIMEOUT)
+
+    # Notice that we do not immediately terminate if the write fails. This allows
+    # us to read an error message from the process.
 
     # We sleep for 0.1 seconds in each iteration.
     max_iterations = timeout_seconds * 10
@@ -50,5 +48,9 @@ async def run(
         else:
             break
 
-    return state.terminate()
+    result = state.terminate()
+    if stdin_data is not None and not write_ok:
+        result.exit_code = -1
+        result.stderr = result.stderr + "\nFailed to write all data to subprocess."
+    return result
 
