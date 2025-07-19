@@ -146,3 +146,22 @@ def test_stdin_data_echo():
     assert result.timeout is False
     assert result.stdout == data
     assert_no_running_evil()
+
+def test_read_one_line():
+    """
+    The test program reads just one line of input, but we are trying to send 
+    two. The program still runs and prints. It runs for longer than the
+    stdin_write_timeout, but shorter than timeout_seconds. However, we still
+    get -1 as the exit_code because it did not receive the entire input.
+    """
+    result = run(
+        ["python3", ROOT / "read_one_line.py"],
+        timeout_seconds=30,
+        max_output_size=1024,
+        stdin_data="Line 1\n" + ("x" * 128 * 1024),
+        stdin_write_timeout=3,
+    )
+    assert result.exit_code == -1
+    assert result.timeout is False
+    assert result.stdout == "I read one line\n"
+    assert_no_running_evil()

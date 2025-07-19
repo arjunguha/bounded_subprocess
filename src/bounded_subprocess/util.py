@@ -6,13 +6,15 @@ from typing import Callable, Optional
 import errno
 import time
 import asyncio
-
+import select
+import dataclasses
 MAX_BYTES_PER_READ = 1024
 SLEEP_BETWEEN_READS = 0.1
 _STDIN_WRITE_TIMEOUT = 15
 SLEEP_BETWEEN_WRITES = 0.01
 
 
+@dataclasses.dataclass
 class Result:
     timeout: int
     exit_code: int
@@ -147,6 +149,51 @@ async def write_nonblocking_async(*, fd, data: bytes, timeout_seconds: int) -> b
 
     return True
 
+
+# This function is very similar to write_nonblocking_async. But, in my
+# opinion, trying to build an abstraction that works for both sync and async
+# code is painful and a deficiency of Python.
+def write_nonblocking_sync(*, fd, data: bytes, timeout_seconds: int) -> bool:
+    """
+    Writes to a nonblocking file descriptor with the timeout.
+
+    Returns True if all the data was written. False indicates that there was
+    either a timeout or a broken pipe.
+    """
+    start_time_seconds = time.time()
+
+    # A slice, data[..], would create a copy. A memoryview does not.
+    mv = memoryview(data)
+    start = 0
+    while start < len(mv):
+        try:
+            # Write as much as possible without blocking.
+            written = fd.write(mv[start:])
+            if written is None:
+                written = 0
+            start = start + written
+        except BrokenPipeError:
+            return False
+        except BlockingIOError as exn:
+            if exn.errno != errno.EAGAIN:
+                # NOTE(arjun): I am not certain why this would happen. However,
+                # you are only supposed to retry on EAGAIN.
+                return False
+            # Some, but not all the bytes were written.
+            start = start + exn.characters_written
+            
+            # Compute how much more time we have left.
+            wait_timeout = timeout_seconds - (time.time() - start_time_seconds)
+            # We are already past the deadline, so abort.
+            if wait_timeout <= 0:
+                return False
+            select_result = select.select([], [fd], [], wait_timeout)
+            if len(select_result[1]) == 0:
+                # Deadline elapsed, so abort.
+                return False
+
+    return True
+
 class BoundedSubprocessState:
     """State shared between synchronous and asynchronous subprocess helpers."""
 
@@ -193,15 +240,29 @@ class BoundedSubprocessState:
         except BrokenPipeError:
             return 0, False
 
-    def close_stdin(self) -> None:
+    def close_stdin(self, timeout: int) -> None:
+        """
+        Closing stdin will block if the other process has not yet read all data.
+        So, we try to close stdin, without blocking, and give up if necessary.
+
+        Closing stdin is not necessary, but is customary, from what I recall from
+        an OS class from 2004.
+        """
         if self.p.stdin is None:
             return
-        try:
-            self.p.stdin.close()
-        except BrokenPipeError:
-            pass
+        for _ in range(timeout):
+            try:
+                self.p.stdin.close()
+                return
+            except BlockingIOError:
+                time.sleep(1)
+            except BrokenPipeError:
+                return
 
     async def close_stdin_async(self, timeout: int) -> None:
+        """
+        See close_stdin for documentation.
+        """
         if self.p.stdin is None:
             return
         for _ in range(timeout):
