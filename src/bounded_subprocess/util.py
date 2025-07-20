@@ -73,29 +73,6 @@ def write_loop_sync(
     return True
 
 
-async def write_loop_async(
-    write_chunk: Callable[[memoryview], tuple[int, bool]],
-    data: bytes,
-    timeout_seconds: float,
-    *,
-    sleep_interval: float,
-) -> bool:
-    """Asynchronously write data until complete or timeout."""
-    mv = memoryview(data)
-    start = 0
-    start_time = time.time()
-    while start < len(mv):
-        written, keep_going = write_chunk(mv[start:])
-        start += written
-        if not keep_going:
-            return False
-        if start < len(mv):
-            if time.time() - start_time > timeout_seconds:
-                return False
-            await asyncio.sleep(sleep_interval)
-    return True
-
-
 async def can_write(fd):
     """
     Waits for the file descriptor to be writable.
