@@ -83,6 +83,15 @@ async def can_write(fd):
     future.add_done_callback(lambda f: loop.remove_writer(fd))
     await future
 
+async def can_read(fd):
+    """
+    Waits until the file descriptor has data to read.
+    """
+    future = asyncio.Future()
+    loop  = asyncio.get_running_loop()
+    loop.add_reader(fd, future.set_result, None)
+    future.add_done_callback(lambda f: loop.remove_reader(fd))
+    await future
 
 async def write_nonblocking_async(*, fd, data: bytes, timeout_seconds: int) -> bool:
     """
