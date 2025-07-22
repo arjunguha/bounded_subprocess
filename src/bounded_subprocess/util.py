@@ -2,12 +2,13 @@ import subprocess
 import os
 import fcntl
 import signal
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 import errno
 import time
 import asyncio
-import select
 import dataclasses
+import select
+
 MAX_BYTES_PER_READ = 1024
 SLEEP_BETWEEN_READS = 0.1
 _STDIN_WRITE_TIMEOUT = 15
@@ -32,22 +33,6 @@ def set_nonblocking(reader):
     fd = reader.fileno()
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
-
-
-def popen_write_chunk(p: subprocess.Popen, data: memoryview) -> tuple[int, bool]:
-    """Try writing a chunk of bytes to a non-blocking Popen stdin."""
-    try:
-        written = p.stdin.write(data)
-        p.stdin.flush()
-        if written is None:
-            written = 0
-        return written, True
-    except BlockingIOError as exn:
-        if exn.errno != errno.EAGAIN:
-            return exn.characters_written, False
-        return exn.characters_written, True
-    except BrokenPipeError:
-        return 0, False
 
 
 def write_loop_sync(
@@ -78,20 +63,22 @@ async def can_write(fd):
     Waits for the file descriptor to be writable.
     """
     future = asyncio.Future()
-    loop  = asyncio.get_running_loop()
+    loop = asyncio.get_running_loop()
     loop.add_writer(fd, future.set_result, None)
     future.add_done_callback(lambda f: loop.remove_writer(fd))
     await future
+
 
 async def can_read(fd):
     """
     Waits until the file descriptor has data to read.
     """
     future = asyncio.Future()
-    loop  = asyncio.get_running_loop()
+    loop = asyncio.get_running_loop()
     loop.add_reader(fd, future.set_result, None)
     future.add_done_callback(lambda f: loop.remove_reader(fd))
     await future
+
 
 async def write_nonblocking_async(*, fd, data: bytes, timeout_seconds: int) -> bool:
     """
@@ -121,7 +108,7 @@ async def write_nonblocking_async(*, fd, data: bytes, timeout_seconds: int) -> b
                 return False
             # Some, but not all the bytes were written.
             start = start + exn.characters_written
-            
+
             # Compute how much more time we have left.
             wait_timeout = timeout_seconds - (time.time() - start_time_seconds)
             # We are already past the deadline, so abort.
@@ -134,6 +121,51 @@ async def write_nonblocking_async(*, fd, data: bytes, timeout_seconds: int) -> b
                 return False
 
     return True
+
+
+def read_to_eof_sync(
+    files: list,
+    *,
+    timeout_seconds: int,
+    max_len: int,
+) -> Optional[List[bytes]]:
+    """
+    Read from nonblocking file descriptors until EOF, with limits on how long
+    to wait and the maximum number of bytes to read.
+
+    Returns the data read, or None if the timeout elapsed.
+    """
+    bufs = {fd: bytearray() for fd in files}
+    avail = set(files)
+    end_at = time.time() + timeout_seconds
+
+    while avail and time.time() < end_at:
+        # Wait only as long as we still have time left
+        remaining = max(0, end_at - time.time())
+        ready, _, _ = select.select(avail, [], [], remaining)
+        if not ready:
+            break
+        for fd in ready:
+            try:
+                chunk = fd.read(MAX_BYTES_PER_READ)
+                if not chunk:
+                    # Reached EOF, so we can stop reading from this file.
+                    avail.discard(fd)
+                    continue
+                the_buf = bufs[fd]
+                # Keep at most max_len bytes, silently dropping any extra bytes.
+                if len(the_buf) < max_len:
+                    keep = max_len - len(the_buf)
+                    the_buf.extend(chunk[:keep])
+            except (BlockingIOError, InterruptedError):
+                # Would-block, so we can't read from this file.
+                pass
+            except OSError:
+                # Broken pipe, bad fd, etc.
+                avail.discard(fd)
+
+    # Preserve the caller-supplied order
+    return [bytes(bufs[fd]) for fd in files]
 
 
 # This function is very similar to write_nonblocking_async. But, in my
@@ -167,7 +199,7 @@ def write_nonblocking_sync(*, fd, data: bytes, timeout_seconds: int) -> bool:
                 return False
             # Some, but not all the bytes were written.
             start = start + exn.characters_written
-            
+
             # Compute how much more time we have left.
             wait_timeout = timeout_seconds - (time.time() - start_time_seconds)
             # We are already past the deadline, so abort.
@@ -179,6 +211,7 @@ def write_nonblocking_sync(*, fd, data: bytes, timeout_seconds: int) -> bool:
                 return False
 
     return True
+
 
 class BoundedSubprocessState:
     """State shared between synchronous and asynchronous subprocess helpers."""
@@ -260,8 +293,6 @@ class BoundedSubprocessState:
             except BrokenPipeError:
                 return
 
-
-
     def try_read(self) -> bool:
         """
         Reads from the process. Returning False indicates that we should stop
@@ -301,6 +332,7 @@ class BoundedSubprocessState:
 
     def terminate(self) -> Result:
         try:
+            print("TERMI")
             # Kills the process group. Without this line, test_fork_once fails.
             os.killpg(self.process_group_id, signal.SIGKILL)
         except ProcessLookupError:

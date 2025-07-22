@@ -16,6 +16,18 @@ def assert_no_running_evil():
     assert len(result.stdout) == 0
 
 
+def test_trivial():
+    result = run(
+        ["echo", "hello"],
+        timeout_seconds=1,
+        max_output_size=1024,
+    )
+    assert result.exit_code == 0
+    assert result.timeout == False
+    assert result.stdout == "hello\n"
+    assert result.stderr == ""
+
+
 def test_fork_once():
     # The program exits cleanly and immediately. But, it forks a child that runs
     # forever.
