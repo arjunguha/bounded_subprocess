@@ -70,7 +70,9 @@ class _InteractiveState:
 
     def trim_stdout(self) -> None:
         if len(self.stdout_saved_bytes) > self.read_buffer_size:
-            del self.stdout_saved_bytes[: len(self.stdout_saved_bytes) - self.read_buffer_size]
+            del self.stdout_saved_bytes[
+                : len(self.stdout_saved_bytes) - self.read_buffer_size
+            ]
 
 
 @typechecked
@@ -121,4 +123,3 @@ class Interactive:
             self._state.trim_stdout()
             time.sleep(_SLEEP_AFTER_WOUND_BLOCK)
         return None
-

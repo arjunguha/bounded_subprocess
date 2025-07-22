@@ -31,7 +31,9 @@ async def run(
         write_ok = await write_nonblocking_async(
             fd=state.p.stdin,
             data=stdin_data.encode(),
-            timeout_seconds=stdin_write_timeout if stdin_write_timeout is not None else 15,
+            timeout_seconds=stdin_write_timeout
+            if stdin_write_timeout is not None
+            else 15,
         )
         await state.close_stdin_async(_STDIN_WRITE_TIMEOUT)
 
@@ -53,4 +55,3 @@ async def run(
         result.exit_code = -1
         result.stderr = result.stderr + "\nFailed to write all data to subprocess."
     return result
-
