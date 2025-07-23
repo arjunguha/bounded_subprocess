@@ -2,6 +2,7 @@ import subprocess
 import os
 import signal
 from typing import List, Optional
+import time
 
 from .util import (
     Result,
@@ -25,6 +26,8 @@ def run(
     and all other processes in the process group. Captures at most max_output_size bytes
     of stdout and stderr each, and discards any output beyond that.
     """
+    deadline = time.time() + timeout_seconds
+
     p = subprocess.Popen(
         args,
         env=env,
@@ -60,22 +63,36 @@ def run(
         max_len=max_output_size,
     )
 
-    exit_code = p.poll()
+    # Without this, even the trivial test fails on Linux but not on macOS. It
+    # seems possible for (1) both stdout and stderr to close (2) before the child
+    # process exits, and we can observe the instant between (1) and (2). So, we
+    # need to p.wait and not p.poll.
+    #
+    # Reading the above, we should be able to write a test case that just closes
+    # both stdout and stderr explicitly, and then sleeps for an instant before
+    # terminating normally. That program should not timeout.
+    try:
+       exit_code = p.wait(timeout=max(0, deadline - time.time()))
+       is_timeout = False
+    except subprocess.TimeoutExpired:
+        exit_code = None
+        is_timeout = True
+
     try:
         # Kills the process group. Without this line, test_fork_once fails.
         os.killpg(process_group_id, signal.SIGKILL)
     except ProcessLookupError:
         pass
 
-    timeout = exit_code is None
+    # Even if the process terminates normally, if we failed to write everything to
+    # stdin, we return -1 as the exit code.
     exit_code = (
-        -1 if timeout or (stdin_data is not None and not write_ok) else exit_code
+        -1 if is_timeout or (stdin_data is not None and not write_ok) else exit_code
     )
-    stdout = bufs[0].decode(errors="ignore")
-    stderr = bufs[1].decode(errors="ignore")
+
     return Result(
-        timeout=timeout,
+        timeout=is_timeout,
         exit_code=exit_code,
-        stdout=stdout,
-        stderr=stderr,
+        stdout=bufs[0].decode(errors="ignore"),
+        stderr= bufs[1].decode(errors="ignore"),
     )
