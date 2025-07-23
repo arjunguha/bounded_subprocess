@@ -19,10 +19,6 @@ def __getattr__(name):
         from .util import Result
 
         return Result
-    elif name == "BoundedSubprocessState":
-        from .util import BoundedSubprocessState
-
-        return BoundedSubprocessState
     elif name == "SLEEP_BETWEEN_READS":
         from .util import SLEEP_BETWEEN_READS
 
@@ -32,4 +28,4 @@ def __getattr__(name):
 
 
 # Expose key classes and constants for convenience
-__all__ = ["run", "Result", "BoundedSubprocessState", "SLEEP_BETWEEN_READS"]
+__all__ = ["run", "Result", "SLEEP_BETWEEN_READS"]
