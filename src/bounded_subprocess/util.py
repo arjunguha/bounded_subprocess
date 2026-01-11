@@ -1,3 +1,7 @@
+"""
+Utilities for bounded subprocess I/O and nonblocking pipe helpers.
+"""
+
 import subprocess
 import os
 import fcntl
@@ -16,6 +20,15 @@ SLEEP_BETWEEN_WRITES = 0.01
 
 @dataclasses.dataclass
 class Result:
+    """
+    Result of a bounded subprocess run.
+
+    The `stdout` and `stderr` fields contain at most the requested number of
+    bytes, decoded with errors ignored. `timeout` is True only when the overall
+    timeout elapses. When a timeout or stdin write failure occurs, `exit_code`
+    is -1.
+    """
+
     timeout: int
     exit_code: int
     stdout: str
@@ -29,6 +42,12 @@ class Result:
 
 
 def set_nonblocking(reader):
+    """
+    Mark a file descriptor as nonblocking.
+
+    This is required before using the read/write helpers that rely on
+    nonblocking behavior.
+    """
     fd = reader.fileno()
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
@@ -41,7 +60,12 @@ def write_loop_sync(
     *,
     sleep_interval: float,
 ) -> bool:
-    """Repeatedly write data using write_chunk until complete or timeout."""
+    """
+    Repeatedly write data using `write_chunk` until complete or timeout.
+
+    The `write_chunk` callback returns `(bytes_written, keep_going)`. If
+    `keep_going` is False, this function returns False immediately.
+    """
     mv = memoryview(data)
     start = 0
     start_time = time.time()
@@ -59,7 +83,7 @@ def write_loop_sync(
 
 async def can_write(fd):
     """
-    Waits for the file descriptor to be writable.
+    Wait until the file descriptor is writable.
     """
     future = asyncio.Future()
     loop = asyncio.get_running_loop()
@@ -70,7 +94,7 @@ async def can_write(fd):
 
 async def can_read(fd):
     """
-    Waits until the file descriptor has data to read.
+    Wait until the file descriptor is readable.
     """
     future = asyncio.Future()
     loop = asyncio.get_running_loop()
@@ -85,6 +109,8 @@ async def write_nonblocking_async(*, fd, data: bytes, timeout_seconds: int) -> b
 
     Returns True if all the data was written. False indicates that there was
     either a timeout or a broken pipe.
+
+    This function does not close the file descriptor.
     """
     start_time_seconds = time.time()
 
@@ -192,7 +218,11 @@ async def read_to_eof_async(
     timeout_seconds: int,
     max_len: int,
 ) -> List[bytes]:
-    """Asynchronously read from nonblocking FDs until EOF or timeout."""
+    """
+    Asynchronously read from nonblocking FDs until EOF or timeout.
+
+    The returned list preserves the order of the `files` argument.
+    """
     bufs = {fd: bytearray() for fd in files}
     avail = list(files)
     end_at = time.time() + timeout_seconds
@@ -228,6 +258,8 @@ def write_nonblocking_sync(*, fd, data: bytes, timeout_seconds: int) -> bool:
 
     Returns True if all the data was written. False indicates that there was
     either a timeout or a broken pipe.
+
+    This function does not close the file descriptor.
     """
     start_time_seconds = time.time()
 
@@ -262,5 +294,4 @@ def write_nonblocking_sync(*, fd, data: bytes, timeout_seconds: int) -> bool:
                 return False
 
     return True
-
 

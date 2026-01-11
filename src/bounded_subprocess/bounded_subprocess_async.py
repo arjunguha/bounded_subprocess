@@ -1,3 +1,7 @@
+"""
+Asynchronous subprocess execution with bounds on runtime and output size.
+"""
+
 import asyncio
 import os
 import signal
@@ -22,7 +26,35 @@ async def run(
     stdin_data: Optional[str] = None,
     stdin_write_timeout: Optional[int] = None,
 ) -> Result:
-    """Run a subprocess asynchronously with bounded I/O."""
+    """
+    Run a subprocess asynchronously with bounded stdout/stderr capture.
+
+    The child process is started in a new session and polled until it exits or
+    the timeout elapses. Stdout and stderr are read in nonblocking mode and
+    truncated to `max_output_size` bytes each. If the timeout elapses,
+    `Result.timeout` is True and `Result.exit_code` is -1. If `stdin_data`
+    cannot be fully written before `stdin_write_timeout`, `Result.exit_code`
+    is set to -1 even if the process exits normally.
+
+    Example:
+
+    ```python
+    import asyncio
+    from bounded_subprocess.bounded_subprocess_async import run
+
+    async def main():
+        result = await run(
+            ["bash", "-lc", "echo ok; echo err 1>&2"],
+            timeout_seconds=5,
+            max_output_size=1024,
+        )
+        print(result.exit_code)
+        print(result.stdout.strip())
+        print(result.stderr.strip())
+
+    asyncio.run(main())
+    ```
+    """
 
     deadline = time.time() + timeout_seconds
 

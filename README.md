@@ -14,6 +14,8 @@ The `bounded-subprocess` module runs a subprocess with several bounds:
 Note that the subprocess is not isolated: it can use the network, the filesystem,
 or create new sessions.
 
+- Documentation: https://arjunguha.github.io/bounded_subprocess/
+
 ## Installation
 
 ```console

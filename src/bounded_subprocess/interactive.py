@@ -1,3 +1,7 @@
+"""
+Interactive subprocess wrapper with nonblocking stdin/stdout.
+"""
+
 from typeguard import typechecked
 from typing import List, Optional
 import time
@@ -77,12 +81,43 @@ class _InteractiveState:
 
 @typechecked
 class Interactive:
-    """Interact with a subprocess using non-blocking I/O."""
+    """
+    Interact with a subprocess using nonblocking I/O.
+
+    The subprocess is started with pipes for stdin and stdout. Writes are
+    bounded by a timeout, and reads return complete lines (without the trailing
+    newline). The internal buffer is capped at `read_buffer_size`; older bytes
+    are dropped if output grows without line breaks.
+
+    Example:
+
+    ```python
+    from bounded_subprocess.interactive import Interactive
+
+    proc = Interactive(["python3", "-u", "-c", "print(input())"], read_buffer_size=4096)
+    ok = proc.write(b"hello\n", timeout_seconds=1)
+    line = proc.read_line(timeout_seconds=1)
+    rc = proc.close(nice_timeout_seconds=1)
+    ```
+    """
 
     def __init__(self, args: List[str], read_buffer_size: int) -> None:
+        """
+        Start a subprocess with a bounded stdout buffer.
+
+        The child process is created with nonblocking stdin/stdout pipes. The
+        internal read buffer keeps at most `read_buffer_size` bytes of recent
+        output.
+        """
         self._state = _InteractiveState(args, read_buffer_size)
 
     def close(self, nice_timeout_seconds: int) -> int:
+        """
+        Close pipes, wait briefly, then kill the subprocess.
+
+        Returns the subprocess return code, or -9 if the process is still
+        running when it is killed.
+        """
         self._state.close_pipes()
         for _ in range(nice_timeout_seconds):
             if self._state.poll() is not None:
@@ -92,6 +127,11 @@ class Interactive:
         return self._state.return_code()
 
     def write(self, stdin_data: bytes, timeout_seconds: int) -> bool:
+        """
+        Write `stdin_data` to the subprocess within `timeout_seconds`.
+
+        Returns False if the subprocess has already exited or if writing fails.
+        """
         if self._state.poll() is not None:
             return False
         return write_loop_sync(
@@ -102,6 +142,11 @@ class Interactive:
         )
 
     def read_line(self, timeout_seconds: int) -> Optional[bytes]:
+        """
+        Read the next line from stdout, or return None on timeout/EOF.
+
+        The returned line does not include the trailing newline byte.
+        """
         line = self._state.pop_line(0)
         if line is not None:
             return line

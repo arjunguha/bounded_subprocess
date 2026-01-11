@@ -1,3 +1,7 @@
+"""
+Synchronous subprocess execution with bounds on runtime and output size.
+"""
+
 import subprocess
 import os
 import signal
@@ -22,9 +26,29 @@ def run(
     stdin_write_timeout: Optional[int] = None,
 ) -> Result:
     """
-    Runs the given program with arguments. After the timeout elapses, kills the process
-    and all other processes in the process group. Captures at most max_output_size bytes
-    of stdout and stderr each, and discards any output beyond that.
+    Run a subprocess with a timeout and bounded stdout/stderr capture.
+
+    This helper starts the child in a new session so timeout cleanup can kill
+    the entire process group. Stdout and stderr are read in nonblocking mode and
+    truncated to `max_output_size` bytes each. If the timeout elapses, the
+    returned `Result.timeout` is True and `Result.exit_code` is -1. If
+    `stdin_data` cannot be fully written before `stdin_write_timeout`,
+    `Result.exit_code` is set to -1 even if the process exits normally.
+
+    Example:
+
+    ```python
+    from bounded_subprocess import run
+
+    result = run(
+        ["bash", "-lc", "echo ok; echo err 1>&2"],
+        timeout_seconds=5,
+        max_output_size=1024,
+    )
+    print(result.exit_code)
+    print(result.stdout.strip())
+    print(result.stderr.strip())
+    ```
     """
     deadline = time.time() + timeout_seconds
 
