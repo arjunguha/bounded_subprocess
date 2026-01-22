@@ -1,5 +1,5 @@
 import pytest
-from bounded_subprocess.bounded_subprocess_async import run
+from bounded_subprocess.bounded_subprocess_async import run, podman_run
 from pathlib import Path
 import asyncio
 import time
@@ -123,3 +123,50 @@ async def test_read_one_line():
     assert result.timeout is False
     assert result.stdout == "I read one line\n"
     await assert_no_running_evil()
+
+
+@pytest.mark.asyncio
+async def test_podman_run_stdin():
+    """Test podman_run with stdin_data input."""
+    data = "hello container\n"
+    result = await podman_run(
+        ["cat"],
+        image="alpine:latest",
+        timeout_seconds=5,
+        max_output_size=1024,
+        stdin_data=data,
+    )
+    assert result.exit_code == 0
+    assert result.timeout is False
+    assert result.stdout == data
+    # stderr may contain podman pull messages, which is fine
+
+
+@pytest.mark.asyncio
+async def test_podman_run_sleep_forever():
+    """Test podman_run with a container that runs forever (timeout scenario)."""
+    result = await podman_run(
+        ["python3", "-c", "import time; time.sleep(60)"],
+        image="python:3",
+        timeout_seconds=2,
+        max_output_size=1024,
+    )
+    assert result.exit_code == -1
+    assert result.timeout is True
+    # stderr may contain podman pull messages, which is fine
+    assert len(result.stdout) == 0
+
+
+@pytest.mark.asyncio
+async def test_podman_run_unbounded_output():
+    """Test podman_run with a container that produces output forever."""
+    result = await podman_run(
+        ["sh", "-c", "while true; do echo 'x' | tr -d '\\n' | head -c 100; echo; done"],
+        image="alpine:latest",
+        timeout_seconds=3,
+        max_output_size=1024,
+    )
+    assert result.exit_code == -1
+    assert result.timeout is True
+    # stderr may contain podman pull messages, which is fine
+    assert len(result.stdout) == 1024
