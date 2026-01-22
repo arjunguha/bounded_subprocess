@@ -82,7 +82,9 @@ async def run(
         write_ok = await write_nonblocking_async(
             fd=p.stdin,
             data=stdin_data.encode(),
-            timeout_seconds=stdin_write_timeout if stdin_write_timeout is not None else 15,
+            timeout_seconds=stdin_write_timeout
+            if stdin_write_timeout is not None
+            else 15,
         )
         try:
             p.stdin.close()
@@ -113,7 +115,9 @@ async def run(
     except ProcessLookupError:
         pass
 
-    exit_code = -1 if is_timeout or (stdin_data is not None and not write_ok) else exit_code
+    exit_code = (
+        -1 if is_timeout or (stdin_data is not None and not write_ok) else exit_code
+    )
 
     return Result(
         timeout=is_timeout,
@@ -127,10 +131,13 @@ async def run(
 async def _podman_rm(cidfile_path: str):
     try:
         proc = await asyncio.create_subprocess_exec(
-            "podman", "rm", 
+            "podman",
+            "rm",
             "-f",
-            "--time", "0", 
-            "--cidfile", cidfile_path,
+            "--time",
+            "0",
+            "--cidfile",
+            cidfile_path,
             "--ignore",
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -145,6 +152,7 @@ async def _podman_rm(cidfile_path: str):
             os.unlink(cidfile_path)
         except OSError:
             pass
+
 
 async def podman_run(
     args: List[str],
@@ -187,7 +195,9 @@ async def podman_run(
     deadline = time.time() + timeout_seconds
 
     # Use --cidfile to get the container ID
-    with tempfile.NamedTemporaryFile(mode='w', delete=False, prefix='bounded_subprocess_cid_') as cidfile:
+    with tempfile.NamedTemporaryFile(
+        mode="w", delete=False, prefix="bounded_subprocess_cid_"
+    ) as cidfile:
         cidfile_path = cidfile.name
 
     # Build podman command
@@ -220,7 +230,9 @@ async def podman_run(
         write_ok = await write_nonblocking_async(
             fd=p.stdin,
             data=stdin_data.encode(),
-            timeout_seconds=stdin_write_timeout if stdin_write_timeout is not None else 15,
+            timeout_seconds=stdin_write_timeout
+            if stdin_write_timeout is not None
+            else 15,
         )
         try:
             p.stdin.close()
@@ -249,9 +261,11 @@ async def podman_run(
             is_timeout = True
             break
         await asyncio.sleep(min(0.05, remaining))
-        
+
     await _podman_rm(cidfile_path)
-    exit_code = -1 if is_timeout or (stdin_data is not None and not write_ok) else exit_code
+    exit_code = (
+        -1 if is_timeout or (stdin_data is not None and not write_ok) else exit_code
+    )
     return Result(
         timeout=is_timeout,
         exit_code=exit_code if exit_code is not None else -1,

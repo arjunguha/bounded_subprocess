@@ -7,6 +7,7 @@ import asyncio
 
 ROOT = Path(__file__).resolve().parent / "evil_programs"
 
+
 @pytest.mark.asyncio
 async def test_does_not_read():
     p = Interactive(
@@ -19,6 +20,7 @@ async def test_does_not_read():
     assert not await p.write(b"x" * 128 * 1024, timeout_seconds=5)
     assert await p.close(1) == -9
 
+
 @pytest.mark.asyncio
 async def test_dies_shortly_after_launch():
     p = Interactive(
@@ -28,6 +30,7 @@ async def test_dies_shortly_after_launch():
     # We write a large amount of data that would block. But, the child dies
     # before it reads everything we write.
     assert not await p.write(b"x" * 128 * 1024, timeout_seconds=5)
+
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(5)
@@ -40,6 +43,7 @@ async def test_never_writes():
     )
     assert await p.read_line(timeout_seconds=3) is None
 
+
 @pytest.mark.asyncio
 @pytest.mark.timeout(5)
 async def test_write_forever_but_no_newline():
@@ -48,6 +52,7 @@ async def test_write_forever_but_no_newline():
         read_buffer_size=1,
     )
     assert await p.read_line(timeout_seconds=3) is None
+
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(5)
@@ -59,6 +64,7 @@ async def test_dies_while_writing():
     assert await p.read_line(timeout_seconds=1) == b"Will die before next newline"
     assert await p.read_line(timeout_seconds=3) is None
 
+
 @pytest.mark.asyncio
 @pytest.mark.timeout(5)
 async def test_dies_shortly_after_launch():
@@ -69,6 +75,7 @@ async def test_dies_shortly_after_launch():
     )
     await asyncio.sleep(2)
     assert await p.read_line(timeout_seconds=1) is None
+
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(5)
@@ -82,6 +89,7 @@ async def test_dies_shortly_after_launch_2():
     assert await p.read_line(timeout_seconds=1) is None
     assert await p.read_line(timeout_seconds=1) is None
 
+
 @pytest.mark.asyncio
 @pytest.mark.timeout(5)
 async def test_close_blocking_trivial():
@@ -91,6 +99,7 @@ async def test_close_blocking_trivial():
     )
     # -9 indicates that the child was killed with SIGKILL.
     assert await p.close(1) == -9
+
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(5)
@@ -103,6 +112,7 @@ async def test_close_when_child_writes_forever():
     # it will not be killed by a signal.
     assert await p.close(1) > 0
 
+
 @pytest.mark.asyncio
 @pytest.mark.timeout(5)
 async def test_double_close():
@@ -113,6 +123,7 @@ async def test_double_close():
     assert await p.close(1) == -9
     # The child is already dead, so this should be a no-op.
     assert await p.close(1) == -9
+
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(5)

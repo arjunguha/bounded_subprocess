@@ -1,4 +1,5 @@
 import time
+
 deadline = time.time() + 1
 print("Will die before next newline", flush=True)
 while time.time() < deadline:

@@ -96,8 +96,8 @@ def run(
     # both stdout and stderr explicitly, and then sleeps for an instant before
     # terminating normally. That program should not timeout.
     try:
-       exit_code = p.wait(timeout=max(0, deadline - time.time()))
-       is_timeout = False
+        exit_code = p.wait(timeout=max(0, deadline - time.time()))
+        is_timeout = False
     except subprocess.TimeoutExpired:
         exit_code = None
         is_timeout = True
@@ -118,5 +118,5 @@ def run(
         timeout=is_timeout,
         exit_code=exit_code,
         stdout=bufs[0].decode(errors="ignore"),
-        stderr= bufs[1].decode(errors="ignore"),
+        stderr=bufs[1].decode(errors="ignore"),
     )

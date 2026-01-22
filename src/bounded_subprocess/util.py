@@ -294,4 +294,3 @@ def write_nonblocking_sync(*, fd, data: bytes, timeout_seconds: int) -> bool:
                 return False
 
     return True
-

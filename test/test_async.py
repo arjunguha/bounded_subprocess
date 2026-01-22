@@ -10,9 +10,9 @@ ROOT = Path(__file__).resolve().parent / "evil_programs"
 
 async def assert_no_running_evil():
     result = await run(["pgrep", "-f", ROOT], timeout_seconds=1, max_output_size=1024)
-    assert (
-        result.exit_code == 1
-    ), f"There are still evil processes running: {result.stdout}"
+    assert result.exit_code == 1, (
+        f"There are still evil processes running: {result.stdout}"
+    )
     assert len(result.stderr) == 0
     assert len(result.stdout) == 0
 
@@ -104,10 +104,11 @@ async def test_stdin_data_async_echo():
     assert result.stdout == data
     await assert_no_running_evil()
 
+
 @pytest.mark.asyncio
 async def test_read_one_line():
     """
-    The test program reads just one line of input, but we are trying to send 
+    The test program reads just one line of input, but we are trying to send
     two. The program still runs and prints. It runs for longer than the
     stdin_write_timeout, but shorter than timeout_seconds. However, we still
     get -1 as the exit_code because it did not receive the entire input.

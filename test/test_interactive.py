@@ -1,6 +1,7 @@
 import time
 from pathlib import Path
 from bounded_subprocess.interactive import Interactive
+
 ROOT = Path(__file__).resolve().parent / "evil_programs"
 import pytest
 
@@ -17,7 +18,6 @@ def test_does_not_read():
     assert p.close(1) == -9
 
 
-
 def test_dies_shortly_after_launch():
     p = Interactive(
         ["python3", ROOT / "dies_shortly_after_launch.py"],
@@ -26,6 +26,7 @@ def test_dies_shortly_after_launch():
     # We write a large amount of data that would block. But, the child dies
     # before it reads everything we write.
     assert not p.write(b"x" * 128 * 1024, timeout_seconds=5)
+
 
 @pytest.mark.timeout(5)
 def test_never_writes():
@@ -37,6 +38,7 @@ def test_never_writes():
     )
     assert p.read_line(timeout_seconds=3) is None
 
+
 @pytest.mark.timeout(5)
 def test_write_forever_but_no_newline():
     p = Interactive(
@@ -44,6 +46,7 @@ def test_write_forever_but_no_newline():
         read_buffer_size=1,
     )
     assert p.read_line(timeout_seconds=3) is None
+
 
 @pytest.mark.timeout(5)
 def test_dies_while_writing():
@@ -54,6 +57,7 @@ def test_dies_while_writing():
     assert p.read_line(timeout_seconds=1) == b"Will die before next newline"
     assert p.read_line(timeout_seconds=3) is None
 
+
 @pytest.mark.timeout(5)
 def test_dies_shortly_after_launch():
     # The child dies one second after launch. The test is potentially flaky.
@@ -63,6 +67,7 @@ def test_dies_shortly_after_launch():
     )
     time.sleep(2)
     assert p.read_line(timeout_seconds=1) is None
+
 
 @pytest.mark.timeout(5)
 def test_dies_shortly_after_launch_2():
@@ -85,6 +90,7 @@ def test_close_trivial():
     # -9 indicates that the child was killed with SIGKILL.
     assert p.close(1) == -9
 
+
 @pytest.mark.timeout(5)
 def test_close_when_child_writes_forever():
     p = Interactive(
@@ -95,6 +101,7 @@ def test_close_when_child_writes_forever():
     # it will not be killed by a signal.
     assert p.close(1) > 0
 
+
 @pytest.mark.timeout(5)
 def test_double_close():
     p = Interactive(
@@ -104,6 +111,7 @@ def test_double_close():
     assert p.close(1) == -9
     # The child is already dead, so this should be a no-op.
     assert p.close(1) == -9
+
 
 @pytest.mark.timeout(5)
 def test_close_after_normal_exit():
