@@ -163,6 +163,8 @@ async def podman_run(
     env=None,
     stdin_data: Optional[str] = None,
     stdin_write_timeout: Optional[int] = None,
+    volumes: List[str] = [],
+    cwd: Optional[str] = None,
 ) -> Result:
     """
     Run a subprocess in a podman container asynchronously with bounded stdout/stderr capture.
@@ -172,19 +174,32 @@ async def podman_run(
     the same as `run`, except for an additional `image` parameter to specify the
     container image to use.
 
+    Args:
+        args: Command arguments to run in the container.
+        image: Container image to use.
+        timeout_seconds: Maximum time to wait for the process to complete.
+        max_output_size: Maximum size in bytes for stdout/stderr capture.
+        env: Optional dictionary of environment variables.
+        stdin_data: Optional string data to write to stdin.
+        stdin_write_timeout: Optional timeout for writing stdin data.
+        volumes: Optional list of volume mount specifications (e.g., ["/host/path:/container/path"]).
+        cwd: Optional working directory path inside the container.
+
     Example:
 
     ```python
     import asyncio
-    from bounded_subprocess.bounded_subprocess_async import run_container
+    from bounded_subprocess.bounded_subprocess_async import podman_run
 
     async def main():
-        result = await run_container(
+        result = await podman_run(
             ["cat"],
             image="alpine:latest",
             timeout_seconds=5,
             max_output_size=1024,
             stdin_data="hello\n",
+            volumes=["/host/data:/container/data"],
+            cwd="/container/data",
         )
         print(result.exit_code)
         print(result.stdout.strip())
@@ -208,6 +223,14 @@ async def podman_run(
         # Convert env dict to -e flags for podman
         for key, value in env.items():
             podman_args.extend(["-e", f"{key}={value}"])
+
+    # Handle volume mounts
+    for volume in volumes:
+        podman_args.extend(["-v", volume])
+
+    # Handle working directory
+    if cwd is not None:
+        podman_args.extend(["-w", cwd])
 
     podman_args.append(image)
     podman_args.extend(args)

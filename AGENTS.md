@@ -1,3 +1,5 @@
+Use `uv run`to run and not `python`.
+
 ## Publishing Process
 
 Increment the version number as appropriate in pyproject.toml. Delete old

@@ -171,3 +171,48 @@ async def test_podman_run_unbounded_output():
     assert result.timeout is True
     # stderr may contain podman pull messages, which is fine
     assert len(result.stdout) == 1024
+
+
+@pytest.mark.asyncio
+async def test_podman_run_volumes():
+    """Test podman_run with volume mounts."""
+    import tempfile
+    
+    # Create a temporary file with test content
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as tmp_file:
+        tmp_file.write("test content\n")
+        tmp_path = tmp_file.name
+    
+    try:
+        # Mount the file and read it from the container
+        result = await podman_run(
+            ["cat", "/mnt/test.txt"],
+            image="alpine:latest",
+            timeout_seconds=5,
+            max_output_size=1024,
+            volumes=[f"{tmp_path}:/mnt/test.txt:ro"],
+        )
+        assert result.exit_code == 0
+        assert result.timeout is False
+        assert result.stdout == "test content\n"
+    finally:
+        # Clean up
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_podman_run_cwd():
+    """Test podman_run with working directory."""
+    result = await podman_run(
+        ["pwd"],
+        image="alpine:latest",
+        timeout_seconds=5,
+        max_output_size=1024,
+        cwd="/tmp",
+    )
+    assert result.exit_code == 0
+    assert result.timeout is False
+    assert result.stdout.strip() == "/tmp"
