@@ -216,3 +216,32 @@ async def test_podman_run_cwd():
     assert result.exit_code == 0
     assert result.timeout is False
     assert result.stdout.strip() == "/tmp"
+
+
+@pytest.mark.asyncio
+async def test_podman_run_memory_limit_ok():
+    """Test podman_run with memory limit that is sufficient."""
+    result = await podman_run(
+        ["echo", "hello"],
+        image="alpine:latest",
+        timeout_seconds=10,
+        max_output_size=1024,
+        memory_limit_mb=64,
+    )
+    assert result.exit_code == 0
+    assert result.timeout is False
+    assert result.stdout.strip() == "hello"
+
+
+@pytest.mark.asyncio
+async def test_podman_run_memory_limit_oom():
+    """Test podman_run where the process exceeds the memory limit."""
+    # Allocate ~128MB in a container limited to 32MB
+    result = await podman_run(
+        ["python3", "-c", "x = bytearray(128 * 1024 * 1024)"],
+        image="python:3.12-alpine",
+        timeout_seconds=30,
+        max_output_size=4096,
+        memory_limit_mb=32,
+    )
+    assert result.exit_code != 0

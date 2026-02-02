@@ -165,6 +165,7 @@ async def podman_run(
     stdin_write_timeout: Optional[int] = None,
     volumes: List[str] = [],
     cwd: Optional[str] = None,
+    memory_limit_mb: Optional[int] = None,
 ) -> Result:
     """
     Run a subprocess in a podman container asynchronously with bounded stdout/stderr capture.
@@ -184,6 +185,7 @@ async def podman_run(
         stdin_write_timeout: Optional timeout for writing stdin data.
         volumes: Optional list of volume mount specifications (e.g., ["/host/path:/container/path"]).
         cwd: Optional working directory path inside the container.
+        memory_limit_mb: Optional memory limit in megabytes for the container.
 
     Example:
 
@@ -227,6 +229,10 @@ async def podman_run(
     # Handle volume mounts
     for volume in volumes:
         podman_args.extend(["-v", volume])
+
+    # Handle memory limit
+    if memory_limit_mb is not None:
+        podman_args.extend(["--memory", f"{memory_limit_mb}m", "--memory-swap", f"{memory_limit_mb}m"])
 
     # Handle working directory
     if cwd is not None:
