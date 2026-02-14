@@ -127,6 +127,59 @@ async def test_read_one_line():
 
 
 @pytest.mark.asyncio
+async def test_run_memory_limit_ok():
+    result = await run(
+        ["python3", "-c", "import time; x = bytearray(8 * 1024 * 1024); time.sleep(0.5)"],
+        timeout_seconds=5,
+        max_output_size=1024,
+        memory_limit_mb=256,
+        memory_watchdog_interval_seconds=0.05,
+    )
+    assert result.exit_code == 0
+    assert result.timeout is False
+    assert len(result.stderr) == 0
+
+
+@pytest.mark.asyncio
+async def test_run_memory_limit_exceeded():
+    result = await run(
+        ["python3", "-c", "import time; x = bytearray(128 * 1024 * 1024); time.sleep(5)"],
+        timeout_seconds=10,
+        max_output_size=1024,
+        memory_limit_mb=64,
+        memory_watchdog_interval_seconds=0.05,
+    )
+    assert result.exit_code == -1
+    assert result.timeout is False
+
+
+@pytest.mark.asyncio
+async def test_run_memory_limit_exceeded_in_child_process():
+    result = await run(
+        [
+            "python3",
+            "-c",
+            (
+                "import os, time\n"
+                "pid = os.fork()\n"
+                "_ = bytearray(4 * 1024 * 1024)\n"
+                "if pid == 0:\n"
+                "    _ = bytearray(128 * 1024 * 1024)\n"
+                "    time.sleep(5)\n"
+                "else:\n"
+                "    time.sleep(5)\n"
+            ),
+        ],
+        timeout_seconds=10,
+        max_output_size=1024,
+        memory_limit_mb=64,
+        memory_watchdog_interval_seconds=0.05,
+    )
+    assert result.exit_code == -1
+    assert result.timeout is False
+
+
+@pytest.mark.asyncio
 async def test_podman_run_stdin():
     """Test podman_run with stdin_data input."""
     data = "hello container\n"
