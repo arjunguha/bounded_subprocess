@@ -325,6 +325,7 @@ async def podman_run(
     volumes: List[str] = [],
     cwd: Optional[str] = None,
     memory_limit_mb: Optional[int] = None,
+    entrypoint: Optional[str] = None,
 ) -> Result:
     """
     Run a subprocess in a podman container asynchronously with bounded stdout/stderr capture.
@@ -345,6 +346,11 @@ async def podman_run(
         volumes: Optional list of volume mount specifications (e.g., ["/host/path:/container/path"]).
         cwd: Optional working directory path inside the container.
         memory_limit_mb: Optional memory limit in megabytes for the container.
+        entrypoint: Optional override for the container image's ENTRYPOINT.
+            Passed through to podman's `--entrypoint` flag. Pass `""` to clear
+            the image's ENTRYPOINT entirely (so `args` is interpreted as the
+            full command). When `None`, the flag is omitted and the image's
+            ENTRYPOINT is used unchanged.
 
     Example:
 
@@ -396,6 +402,11 @@ async def podman_run(
     # Handle working directory
     if cwd is not None:
         podman_args.extend(["-w", cwd])
+
+    # Handle entrypoint override. Note: `entrypoint=""` is meaningful — it
+    # clears the image's ENTRYPOINT — so we test against None, not falsiness.
+    if entrypoint is not None:
+        podman_args.extend(["--entrypoint", entrypoint])
 
     podman_args.append(image)
     podman_args.extend(args)
