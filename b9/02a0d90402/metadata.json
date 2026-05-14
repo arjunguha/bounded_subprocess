@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "b902a0d90402",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/index.md",
+    "mkdocs.yaml",
+    "src/bounded_subprocess/bounded_subprocess.py",
+    "src/bounded_subprocess/bounded_subprocess_async.py",
+    "src/bounded_subprocess/interactive.py",
+    "src/bounded_subprocess/interactive_async.py",
+    "src/bounded_subprocess/util.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b9/02a0d90402/0/metadata.json",
+      "transcript": "/b9/02a0d90402/0/full.jsonl",
+      "content_hash": "/b9/02a0d90402/0/content_hash.txt",
+      "prompt": "/b9/02a0d90402/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 59,
+    "cache_creation_tokens": 118003,
+    "cache_read_tokens": 2229690,
+    "output_tokens": 18534,
+    "api_call_count": 44
+  }
+}

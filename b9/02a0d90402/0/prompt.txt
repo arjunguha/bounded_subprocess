@@ -1,0 +1,16 @@
+The documentation is a mess. There are some format errors, but I want a deeper restructuring.
+
+Read the whole codebase carefully. I think the documentation -- and I mean the generated site -- should open with an overview of why this project exists. It should then give simple examples, no more than 3-4 of the core functions. There are lots of variations of couse, but these don't need to be covered in the overview.
+
+Then move on to the function-by-function docs. Many internal functions are showing up on the website. I don't want them on the web, but don't remove their docstrings! 
+
+Finally, I detest the Google docstring style. E.g., having a block of Args where you explicitly list every argument. These arguments are well-named and have types. Why repeat it? Here is an example:
+
+Args:
+    args: Command arguments to run in the container.
+    image: Container image to use.
+    timeout_seconds: Maximum time to wait for the process to complete.
+
+timeout_seconds is obvious. image needs some explanation -- it is a container image name, and not a photo of a cat. Get it? 
+
+Go.
