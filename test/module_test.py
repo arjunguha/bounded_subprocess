@@ -69,6 +69,52 @@ def test_unbounded_output():
     assert_no_running_evil()
 
 
+def test_output_limit_keeps_prefix_by_default():
+    result = run(
+        [
+            "sh",
+            "-c",
+            "printf abcdefghij; printf klmnopqrst >&2",
+        ],
+        timeout_seconds=2,
+        max_output_size=4,
+    )
+    assert result.exit_code == 0
+    assert result.timeout is False
+    assert result.stdout == "abcd"
+    assert result.stderr == "klmn"
+
+
+def test_tail_output_limit_keeps_suffix():
+    result = run(
+        [
+            "sh",
+            "-c",
+            "printf abcdefghij; printf klmnopqrst >&2",
+        ],
+        timeout_seconds=2,
+        max_output_size=4,
+        tail=True,
+    )
+    assert result.exit_code == 0
+    assert result.timeout is False
+    assert result.stdout == "ghij"
+    assert result.stderr == "qrst"
+
+
+def test_tail_output_limit_with_zero_size_keeps_nothing():
+    result = run(
+        ["sh", "-c", "printf abcdefghij; printf klmnopqrst >&2"],
+        timeout_seconds=2,
+        max_output_size=0,
+        tail=True,
+    )
+    assert result.exit_code == 0
+    assert result.timeout is False
+    assert result.stdout == ""
+    assert result.stderr == ""
+
+
 def test_sleep_forever():
     result = run(
         ["python3", ROOT / "sleep_forever.py"],

@@ -63,6 +63,55 @@ async def test_unbounded_output():
 
 
 @pytest.mark.asyncio
+async def test_output_limit_keeps_prefix_by_default():
+    result = await run(
+        [
+            "sh",
+            "-c",
+            "printf abcdefghij; printf klmnopqrst >&2",
+        ],
+        timeout_seconds=2,
+        max_output_size=4,
+    )
+    assert result.exit_code == 0
+    assert result.timeout is False
+    assert result.stdout == "abcd"
+    assert result.stderr == "klmn"
+
+
+@pytest.mark.asyncio
+async def test_tail_output_limit_keeps_suffix():
+    result = await run(
+        [
+            "sh",
+            "-c",
+            "printf abcdefghij; printf klmnopqrst >&2",
+        ],
+        timeout_seconds=2,
+        max_output_size=4,
+        tail=True,
+    )
+    assert result.exit_code == 0
+    assert result.timeout is False
+    assert result.stdout == "ghij"
+    assert result.stderr == "qrst"
+
+
+@pytest.mark.asyncio
+async def test_tail_output_limit_with_zero_size_keeps_nothing():
+    result = await run(
+        ["sh", "-c", "printf abcdefghij; printf klmnopqrst >&2"],
+        timeout_seconds=2,
+        max_output_size=0,
+        tail=True,
+    )
+    assert result.exit_code == 0
+    assert result.timeout is False
+    assert result.stdout == ""
+    assert result.stderr == ""
+
+
+@pytest.mark.asyncio
 async def test_concurrent_sleep():
     proc = lambda: run(["sleep", "1"], timeout_seconds=2)
     results = await asyncio.gather(proc(), proc(), proc())

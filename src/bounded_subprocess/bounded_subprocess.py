@@ -21,6 +21,7 @@ def run(
     args: List[str],
     timeout_seconds: int = 15,
     max_output_size: int = 2048,
+    tail: bool = False,
     env=None,
     stdin_data: Optional[str] = None,
     stdin_write_timeout: Optional[int] = None,
@@ -31,9 +32,10 @@ def run(
 
     This helper starts the child in a new session so timeout cleanup can kill
     the entire process group. Stdout and stderr are read in nonblocking mode and
-    truncated to `max_output_size` bytes each. If the timeout elapses, the
-    returned `Result.timeout` is True and `Result.exit_code` is -1. If
-    `stdin_data` cannot be fully written before `stdin_write_timeout`,
+    truncated to `max_output_size` bytes each. By default the captured output
+    is the prefix; set `tail=True` to retain the suffix instead. If the timeout
+    elapses, the returned `Result.timeout` is True and `Result.exit_code` is
+    -1. If `stdin_data` cannot be fully written before `stdin_write_timeout`,
     `Result.exit_code` is set to -1 even if the process exits normally.
 
     Example:
@@ -87,6 +89,7 @@ def run(
         [p.stdout, p.stderr],
         timeout_seconds=timeout_seconds,
         max_len=max_output_size,
+        tail=tail,
     )
 
     # Without this, even the trivial test fails on Linux but not on macOS. It

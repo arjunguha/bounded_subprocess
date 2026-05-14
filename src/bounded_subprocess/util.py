@@ -153,6 +153,7 @@ def read_to_eof_sync(
     *,
     timeout_seconds: int,
     max_len: int,
+    tail: bool = False,
 ) -> Optional[List[bytes]]:
     """
     Read from nonblocking file descriptors until EOF, with limits on how long
@@ -160,7 +161,7 @@ def read_to_eof_sync(
 
     Returns the data read, or None if the timeout elapsed.
     """
-    bufs = {fd: bytearray() for fd in files}
+    bufs = {fd: BoundedOutputBuffer(max_len=max_len, tail=tail) for fd in files}
     avail = set(files)
     end_at = time.time() + timeout_seconds
 
@@ -177,11 +178,7 @@ def read_to_eof_sync(
                     # Reached EOF, so we can stop reading from this file.
                     avail.discard(fd)
                     continue
-                the_buf = bufs[fd]
-                # Keep at most max_len bytes, silently dropping any extra bytes.
-                if len(the_buf) < max_len:
-                    keep = max_len - len(the_buf)
-                    the_buf.extend(chunk[:keep])
+                bufs[fd].extend(chunk)
             except (BlockingIOError, InterruptedError):
                 # Would-block, so we can't read from this file.
                 pass
@@ -190,7 +187,34 @@ def read_to_eof_sync(
                 avail.discard(fd)
 
     # Preserve the caller-supplied order
-    return [bytes(bufs[fd]) for fd in files]
+    return [bufs[fd].bytes() for fd in files]
+
+
+class BoundedOutputBuffer:
+    """
+    Retain either the first or last `max_len` bytes written to the buffer.
+    """
+
+    def __init__(self, *, max_len: int, tail: bool):
+        self._max_len = max_len
+        self._tail = tail
+        self._buf = bytearray()
+
+    def extend(self, chunk: bytes):
+        if self._max_len <= 0:
+            return
+        if self._tail:
+            self._buf.extend(chunk)
+            if len(self._buf) > self._max_len:
+                del self._buf[: len(self._buf) - self._max_len]
+            return
+
+        if len(self._buf) < self._max_len:
+            keep = self._max_len - len(self._buf)
+            self._buf.extend(chunk[:keep])
+
+    def bytes(self) -> bytes:
+        return bytes(self._buf)
 
 
 async def _wait_for_any_read(fds, timeout: float):
@@ -217,13 +241,14 @@ async def read_to_eof_async(
     *,
     timeout_seconds: int,
     max_len: int,
+    tail: bool = False,
 ) -> List[bytes]:
     """
     Asynchronously read from nonblocking FDs until EOF or timeout.
 
     The returned list preserves the order of the `files` argument.
     """
-    bufs = {fd: bytearray() for fd in files}
+    bufs = {fd: BoundedOutputBuffer(max_len=max_len, tail=tail) for fd in files}
     avail = list(files)
     end_at = time.time() + timeout_seconds
 
@@ -237,16 +262,13 @@ async def read_to_eof_async(
             if not chunk:
                 avail.remove(fd)
                 continue
-            buf = bufs[fd]
-            if len(buf) < max_len:
-                keep = max_len - len(buf)
-                buf.extend(chunk[:keep])
+            bufs[fd].extend(chunk)
         except (BlockingIOError, InterruptedError):
             pass
         except OSError:
             avail.remove(fd)
 
-    return [bytes(bufs[fd]) for fd in files]
+    return [bufs[fd].bytes() for fd in files]
 
 
 # This function is very similar to write_nonblocking_async. But, in my

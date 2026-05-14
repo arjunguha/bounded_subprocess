@@ -153,6 +153,7 @@ async def run(
     args: List[str],
     timeout_seconds: int = 15,
     max_output_size: int = 2048,
+    tail: bool = False,
     env=None,
     stdin_data: Optional[str] = None,
     stdin_write_timeout: Optional[int] = None,
@@ -165,13 +166,14 @@ async def run(
 
     The child process is started in a new session and polled until it exits or
     the timeout elapses. Stdout and stderr are read in nonblocking mode and
-    truncated to `max_output_size` bytes each. If the timeout elapses,
-    `Result.timeout` is True and `Result.exit_code` is -1. If `stdin_data`
-    cannot be fully written before `stdin_write_timeout`, `Result.exit_code`
-    is set to -1 even if the process exits normally. If `memory_limit_mb` is
-    set, a watchdog checks aggregate peak RSS (`VmHWM`, summed across the
-    process group) at a fixed interval and kills the process group when the
-    limit is exceeded.
+    truncated to `max_output_size` bytes each. By default the captured output
+    is the prefix; set `tail=True` to retain the suffix instead. If the timeout
+    elapses, `Result.timeout` is True and `Result.exit_code` is -1. If
+    `stdin_data` cannot be fully written before `stdin_write_timeout`,
+    `Result.exit_code` is set to -1 even if the process exits normally. If
+    `memory_limit_mb` is set, a watchdog checks aggregate peak RSS (`VmHWM`,
+    summed across the process group) at a fixed interval and kills the process
+    group when the limit is exceeded.
 
     Example:
 
@@ -241,6 +243,7 @@ async def run(
         [p.stdout, p.stderr],
         timeout_seconds=timeout_seconds,
         max_len=max_output_size,
+        tail=tail,
     )
 
     exit_code = None
@@ -321,6 +324,7 @@ async def podman_run(
     image: str,
     timeout_seconds: int,
     max_output_size: int,
+    tail: bool = False,
     env=None,
     stdin_data: Optional[str] = None,
     stdin_write_timeout: Optional[int] = None,
@@ -342,6 +346,7 @@ async def podman_run(
         image: Container image to use.
         timeout_seconds: Maximum time to wait for the process to complete.
         max_output_size: Maximum size in bytes for stdout/stderr capture.
+        tail: If true, retain the suffix of stdout/stderr instead of the prefix.
         env: Optional dictionary of environment variables.
         stdin_data: Optional string data to write to stdin.
         stdin_write_timeout: Optional timeout for writing stdin data.
@@ -444,6 +449,7 @@ async def podman_run(
         [p.stdout, p.stderr],
         timeout_seconds=timeout_seconds,
         max_len=max_output_size,
+        tail=tail,
     )
 
     # Busy-wait for the process to exit or the deadline. Why do we need this
