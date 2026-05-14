@@ -1,0 +1,29 @@
+I want you to design a abstraction for running Podman that cleans things up like the one that's already in this project, but that supports streaming output using an async generator. Make sure it's tested properly, so I just need non-streaming input but streaming output, as well as the ability to interrupt streams by sort of terminating early. So it's like a weird mix of interactive and the Podman thing. In particular, I may get multiple lines of output that I'm streaming out, and I may wish to sort of interrupt after n lines. Also, the stream should be by line and should work with strings and not bytes, both the input and the output. And I guess there should be a bound on the maximum line length read in the sort of spirit of everything else in this project.
+
+---
+
+Tell me about the new tests you wrote.
+
+---
+
+Do NOT fake podman. You fucking overconfident shit. You cannot fucking fake podman. USE PODMAN.
+
+---
+
+Now tell me about the new podman tests again.
+
+---
+
+Do any of these podman commands actually stream forever? I want a test that would actually output an unbounded stream if we didn't close correctly.
+
+---
+
+Look at the tests for other features. I want harder tests. For example, consider a podman that doesn't output anything. Consider a podman that outputs N lines but the reader expects N+1 lines. What I'm saying is that basically all actions can fail. For example, reading from the async generator can block indefinitely -- and it shouldn't be possible! There should be a hard bound on how long a read from the generator can block before we cleanup.
+
+---
+
+Add docstrings describing these new tests.
+
+---
+
+Please be more detailed. For example, style it container is too cryptic. You can spend several lines on these descriptions.
