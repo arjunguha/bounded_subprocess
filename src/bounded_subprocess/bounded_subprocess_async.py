@@ -8,18 +8,58 @@ import signal
 import time
 import subprocess
 import tempfile
-from typing import List, Optional
+from typing import AsyncIterator, List, Optional
 import logging
 
 from .util import (
     Result,
     set_nonblocking,
     MAX_BYTES_PER_READ,
+    can_read,
     write_nonblocking_async,
     read_to_eof_async,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _build_podman_run_args(
+    args: List[str],
+    *,
+    image: str,
+    cidfile_path: str,
+    env=None,
+    volumes: List[str] = [],
+    cwd: Optional[str] = None,
+    memory_limit_mb: Optional[int] = None,
+    entrypoint: Optional[str] = None,
+) -> List[str]:
+    """
+    Build the `podman run` command line shared by the capture and stream APIs.
+    """
+    podman_args = ["podman", "run", "--rm", "-i", "--cidfile", cidfile_path]
+
+    if env is not None:
+        for key, value in env.items():
+            podman_args.extend(["-e", f"{key}={value}"])
+
+    for volume in volumes:
+        podman_args.extend(["-v", volume])
+
+    if memory_limit_mb is not None:
+        podman_args.extend(
+            ["--memory", f"{memory_limit_mb}m", "--memory-swap", f"{memory_limit_mb}m"]
+        )
+
+    if cwd is not None:
+        podman_args.extend(["-w", cwd])
+
+    if entrypoint is not None:
+        podman_args.extend(["--entrypoint", entrypoint])
+
+    podman_args.append(image)
+    podman_args.extend(args)
+    return podman_args
 
 
 def _read_process_group_id(pid: int) -> Optional[int]:
@@ -371,34 +411,16 @@ async def podman_run(
     ) as cidfile:
         cidfile_path = cidfile.name
 
-    # Build podman command
-    podman_args = ["podman", "run", "--rm", "-i", "--cidfile", cidfile_path]
-
-    # Handle environment variables
-    if env is not None:
-        # Convert env dict to -e flags for podman
-        for key, value in env.items():
-            podman_args.extend(["-e", f"{key}={value}"])
-
-    # Handle volume mounts
-    for volume in volumes:
-        podman_args.extend(["-v", volume])
-
-    # Handle memory limit
-    if memory_limit_mb is not None:
-        podman_args.extend(["--memory", f"{memory_limit_mb}m", "--memory-swap", f"{memory_limit_mb}m"])
-
-    # Handle working directory
-    if cwd is not None:
-        podman_args.extend(["-w", cwd])
-
-    # Handle entrypoint override. Note: `entrypoint=""` is meaningful — it
-    # clears the image's ENTRYPOINT — so we test against None, not falsiness.
-    if entrypoint is not None:
-        podman_args.extend(["--entrypoint", entrypoint])
-
-    podman_args.append(image)
-    podman_args.extend(args)
+    podman_args = _build_podman_run_args(
+        args,
+        image=image,
+        cidfile_path=cidfile_path,
+        env=env,
+        volumes=volumes,
+        cwd=cwd,
+        memory_limit_mb=memory_limit_mb,
+        entrypoint=entrypoint,
+    )
 
     p = subprocess.Popen(
         podman_args,
@@ -461,3 +483,217 @@ async def podman_run(
         stdout=bufs[0].decode(errors="ignore"),
         stderr=bufs[1].decode(errors="ignore"),
     )
+
+
+async def _read_line_from_nonblocking_pipe(
+    fd,
+    saved_bytes: bytearray,
+    *,
+    deadline: float,
+    max_line_size: int,
+) -> Optional[str]:
+    """
+    Read one newline-terminated line from a nonblocking byte pipe.
+
+    The returned line excludes the trailing newline. If EOF arrives with a
+    partial line buffered, that partial line is returned once. While waiting
+    for a newline, retained bytes are capped to `max_line_size` by dropping the
+    oldest bytes, matching the lossy-but-bounded interactive reader behavior.
+    """
+    line = _pop_decoded_line(saved_bytes, 0)
+    if line is not None:
+        return line
+
+    while time.time() < deadline:
+        wait_timeout = deadline - time.time()
+        if wait_timeout <= 0:
+            return None
+        try:
+            await asyncio.wait_for(can_read(fd), timeout=wait_timeout)
+        except asyncio.TimeoutError:
+            return None
+
+        try:
+            new_bytes = fd.read(MAX_BYTES_PER_READ)
+        except (BlockingIOError, InterruptedError):
+            continue
+
+        if new_bytes is None:
+            continue
+        if len(new_bytes) == 0:
+            if len(saved_bytes) == 0:
+                return None
+            line = bytes(saved_bytes).decode(errors="ignore")
+            saved_bytes.clear()
+            return line
+
+        prev_len = len(saved_bytes)
+        saved_bytes.extend(new_bytes)
+        newline_index = saved_bytes.find(b"\n", prev_len)
+        if newline_index != -1:
+            if max_line_size <= 0:
+                del saved_bytes[:newline_index]
+                prev_len = 0
+            elif newline_index > max_line_size:
+                del saved_bytes[: newline_index - max_line_size]
+                prev_len = 0
+        line = _pop_decoded_line(saved_bytes, prev_len)
+        if line is not None:
+            return line
+        if max_line_size <= 0:
+            saved_bytes.clear()
+        elif len(saved_bytes) > max_line_size:
+            del saved_bytes[: len(saved_bytes) - max_line_size]
+    return None
+
+
+def _pop_decoded_line(saved_bytes: bytearray, start_idx: int) -> Optional[str]:
+    newline_index = saved_bytes.find(b"\n", start_idx)
+    if newline_index == -1:
+        return None
+    line = memoryview(saved_bytes)[:newline_index].tobytes().decode(errors="ignore")
+    del saved_bytes[: newline_index + 1]
+    return line
+
+
+async def podman_run_stream_lines(
+    args: List[str],
+    *,
+    image: str,
+    timeout_seconds: int,
+    max_line_size: int,
+    env=None,
+    stdin_data: Optional[str] = None,
+    stdin_write_timeout: Optional[int] = None,
+    volumes: List[str] = [],
+    cwd: Optional[str] = None,
+    memory_limit_mb: Optional[int] = None,
+    entrypoint: Optional[str] = None,
+    stderr_max_output_size: int = 2048,
+) -> AsyncIterator[str]:
+    """
+    Stream stdout lines from a command inside a podman container.
+
+    This is the streaming counterpart to `podman_run` for the case where stdin
+    is provided all at once as a `str`, but stdout is consumed incrementally.
+    The async iterator yields decoded `str` lines without trailing newlines.
+    Pending line data is capped at `max_line_size` bytes; if a line grows past
+    the cap before a newline arrives, older bytes are discarded.
+
+    The container is force-removed in a `finally` block, so breaking out early
+    works as long as the async generator is closed by the caller. For
+    deterministic early termination when storing the generator in a variable,
+    use `contextlib.aclosing` or call `aclose()`.
+
+    ```python
+    from contextlib import aclosing
+    from bounded_subprocess.bounded_subprocess_async import podman_run_stream_lines
+
+    async with aclosing(podman_run_stream_lines(
+        ["sh", "-c", "printf '%s\\n' one two three"],
+        image="alpine:latest",
+        timeout_seconds=5,
+        max_line_size=1024,
+    )) as lines:
+        async for line in lines:
+            print(line)
+            break
+    ```
+    """
+    deadline = time.time() + timeout_seconds
+    with tempfile.NamedTemporaryFile(
+        mode="w", delete=False, prefix="bounded_subprocess_cid_"
+    ) as cidfile:
+        cidfile_path = cidfile.name
+
+    podman_args = _build_podman_run_args(
+        args,
+        image=image,
+        cidfile_path=cidfile_path,
+        env=env,
+        volumes=volumes,
+        cwd=cwd,
+        memory_limit_mb=memory_limit_mb,
+        entrypoint=entrypoint,
+    )
+
+    p = subprocess.Popen(
+        podman_args,
+        env=None,
+        stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=MAX_BYTES_PER_READ,
+    )
+    set_nonblocking(p.stdout)
+    set_nonblocking(p.stderr)
+
+    stderr_task = asyncio.create_task(
+        read_to_eof_async(
+            [p.stderr],
+            timeout_seconds=timeout_seconds,
+            max_len=stderr_max_output_size,
+            tail=True,
+        )
+    )
+
+    try:
+        if stdin_data is not None:
+            set_nonblocking(p.stdin)
+            write_ok = await write_nonblocking_async(
+                fd=p.stdin,
+                data=stdin_data.encode(),
+                timeout_seconds=stdin_write_timeout
+                if stdin_write_timeout is not None
+                else 15,
+            )
+            try:
+                p.stdin.close()
+            except (BrokenPipeError, BlockingIOError):
+                pass
+            if not write_ok:
+                return
+
+        saved_stdout = bytearray()
+        while True:
+            if time.time() >= deadline:
+                return
+            line = await _read_line_from_nonblocking_pipe(
+                p.stdout,
+                saved_stdout,
+                deadline=deadline,
+                max_line_size=max_line_size,
+            )
+            if line is None:
+                return
+            yield line
+    finally:
+        if not stderr_task.done():
+            stderr_task.cancel()
+            try:
+                await stderr_task
+            except asyncio.CancelledError:
+                pass
+        try:
+            p.stdout.close()
+        except OSError:
+            pass
+        try:
+            if p.stdin is not None:
+                p.stdin.close()
+        except OSError:
+            pass
+        try:
+            p.stderr.close()
+        except OSError:
+            pass
+        if p.poll() is None:
+            try:
+                p.kill()
+            except ProcessLookupError:
+                pass
+        try:
+            await asyncio.wait_for(asyncio.to_thread(p.wait), timeout=1.0)
+        except (asyncio.TimeoutError, ProcessLookupError):
+            pass
+        await _podman_rm(cidfile_path)

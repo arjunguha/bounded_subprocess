@@ -25,7 +25,7 @@ This is *not* isolation: the child can still touch the filesystem, the
 network, or escape into a new session of its own. If you need isolation,
 `podman_run` runs the same interface inside a container.
 
-The library comes in four flavors, all built on the same primitives:
+The library comes in several flavors, all built on the same primitives:
 
 | Function / class | When to reach for it |
 | --- | --- |
@@ -33,6 +33,7 @@ The library comes in four flavors, all built on the same primitives:
 | [`run` (async)](#bounded_subprocess.bounded_subprocess_async.run) | The same, but `await`-able, and with an optional memory watchdog. |
 | [`Interactive`](#bounded_subprocess.interactive.Interactive) | A long-lived child you talk to line by line. |
 | [`podman_run`](#bounded_subprocess.bounded_subprocess_async.podman_run) | Async execution inside a podman container. |
+| [`podman_run_stream_lines`](#bounded_subprocess.bounded_subprocess_async.podman_run_stream_lines) | Async line streaming from a podman container. |
 
 ## Quickstart
 
@@ -92,6 +93,27 @@ async def main():
 asyncio.run(main())
 ```
 
+### Stream lines from a container
+
+```python
+import asyncio
+from contextlib import aclosing
+from bounded_subprocess.bounded_subprocess_async import podman_run_stream_lines
+
+async def main():
+    async with aclosing(podman_run_stream_lines(
+        ["sh", "-c", "printf '%s\n' one two three"],
+        image="alpine:latest",
+        timeout_seconds=5,
+        max_line_size=1024,
+    )) as lines:
+        async for line in lines:
+            print(line)
+            break
+
+asyncio.run(main())
+```
+
 Each entry point takes plenty of additional knobs (working directory,
 environment, stdin, memory limit, container volumes, …); see the reference
 below.
@@ -107,6 +129,8 @@ below.
 ::: bounded_subprocess.bounded_subprocess_async.run
 
 ::: bounded_subprocess.bounded_subprocess_async.podman_run
+
+::: bounded_subprocess.bounded_subprocess_async.podman_run_stream_lines
 
 ### Interactive execution
 
