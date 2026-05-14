@@ -8,7 +8,27 @@ from .util import write_nonblocking_async, can_read, MAX_BYTES_PER_READ
 
 @typechecked
 class Interactive:
-    """Asynchronous interface for interacting with a subprocess."""
+    """
+    Async counterpart of `bounded_subprocess.interactive.Interactive`.
+
+    Same model — a long-lived child with nonblocking line-oriented I/O — but
+    `write`, `read_line`, and `close` are coroutines. `read_buffer_size`
+    caps retained stdout the same way; lines longer than the buffer are
+    silently truncated from the front.
+
+    ```python
+    import asyncio
+    from bounded_subprocess.interactive_async import Interactive
+
+    async def main():
+        proc = Interactive(["python3", "-iu"], read_buffer_size=4096)
+        await proc.write(b"print(1 + 2)\\n", timeout_seconds=1)
+        print(await proc.read_line(timeout_seconds=1))   # b'3'
+        await proc.close(nice_timeout_seconds=1)
+
+    asyncio.run(main())
+    ```
+    """
 
     def __init__(
         self,
@@ -16,9 +36,15 @@ class Interactive:
         read_buffer_size: int,
         cwd: Optional[str] = None,
     ) -> None:
+        """Spawn the child process. See the class docstring for parameter semantics."""
         self._state = _InteractiveState(args, read_buffer_size, cwd=cwd)
 
     async def close(self, nice_timeout_seconds: int) -> int:
+        """
+        Close the pipes, wait up to `nice_timeout_seconds` for a clean exit,
+        then `SIGKILL` if still running. Returns the child's exit code, or
+        `-9` if it had to be killed.
+        """
         self._state.close_pipes()
         for _ in range(nice_timeout_seconds):
             if self._state.poll() is not None:
@@ -28,6 +54,10 @@ class Interactive:
         return self._state.return_code()
 
     async def write(self, stdin_data: bytes, timeout_seconds: int) -> bool:
+        """
+        Write `stdin_data` to the child within the timeout. Returns `False`
+        if the child has already exited or the write fails.
+        """
         if self._state.poll() is not None:
             return False
         return await write_nonblocking_async(
@@ -41,6 +71,10 @@ class Interactive:
     # is a bunch of extra work to avoid blocking, a timeout, and a limit on
     # how long a received line can be.
     async def read_line(self, timeout_seconds: int) -> Optional[bytes]:
+        """
+        Read the next line of stdout (without the trailing newline), or
+        return `None` on timeout / EOF.
+        """
         # First, try to read a line from the internal buffer. The zero argument
         # indicates where to *start looking for a newline*. The returned line
         # always begins from the start of the buffer. This is an optimization

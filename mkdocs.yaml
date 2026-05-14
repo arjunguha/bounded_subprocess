@@ -47,10 +47,14 @@ plugins:
           paths: ["src"]
           options:
             show_signature_annotations: true
+            separate_signature: true
             show_root_heading: true
-            heading_level: 2
-            docstring_style: google
+            show_root_full_path: true
+            show_source: false
+            heading_level: 3
             merge_init_into_class: true
+            filters:
+              - "!^_"
 
 nav:
   - Home: index.md

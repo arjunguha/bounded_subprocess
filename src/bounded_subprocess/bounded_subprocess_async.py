@@ -162,20 +162,21 @@ async def run(
     cwd: Optional[str] = None,
 ) -> Result:
     """
-    Run a subprocess asynchronously with bounded stdout/stderr capture.
+    Async counterpart of `bounded_subprocess.run`, with an optional memory limit.
 
-    The child process is started in a new session and polled until it exits or
-    the timeout elapses. Stdout and stderr are read in nonblocking mode and
-    truncated to `max_output_size` bytes each. By default the captured output
-    is the prefix; set `tail=True` to retain the suffix instead. If the timeout
-    elapses, `Result.timeout` is True and `Result.exit_code` is -1. If
-    `stdin_data` cannot be fully written before `stdin_write_timeout`,
-    `Result.exit_code` is set to -1 even if the process exits normally. If
-    `memory_limit_mb` is set, a watchdog checks aggregate peak RSS (`VmHWM`,
-    summed across the process group) at a fixed interval and kills the process
-    group when the limit is exceeded.
+    The child is started in its own session and awaited until it exits or the
+    deadline elapses. Stdout and stderr are read nonblockingly and kept to at
+    most `max_output_size` bytes each (prefix by default; suffix when
+    `tail=True`). On timeout, `Result.timeout` is `True` and `Result.exit_code`
+    is `-1`. A failed `stdin_data` write within `stdin_write_timeout` also
+    forces `exit_code` to `-1`, even if the child exits cleanly.
 
-    Example:
+    When `memory_limit_mb` is set, a watchdog polls aggregate peak RSS
+    (`VmHWM` from `/proc`, summed across the process group) every
+    `memory_watchdog_interval_seconds` and kills the whole group when the
+    limit is exceeded. This is a deliberate non-cgroup approximation — it
+    overcounts shared pages and can miss very short-lived children — but it
+    works without elevated privileges on a typical cluster node.
 
     ```python
     import asyncio
@@ -187,9 +188,7 @@ async def run(
             timeout_seconds=5,
             max_output_size=1024,
         )
-        print(result.exit_code)
-        print(result.stdout.strip())
-        print(result.stderr.strip())
+        print(result.exit_code, result.stdout.strip(), result.stderr.strip())
 
     asyncio.run(main())
     ```
@@ -334,32 +333,16 @@ async def podman_run(
     entrypoint: Optional[str] = None,
 ) -> Result:
     """
-    Run a subprocess in a podman container asynchronously with bounded stdout/stderr capture.
+    Run a command inside a podman container, with the same bounds as `run`.
 
-    This function wraps `run` but executes the command inside a podman container.
-    The container is automatically removed after execution. The interface is otherwise
-    the same as `run`, except for an additional `image` parameter to specify the
-    container image to use.
+    The container is launched with `--rm -i`, its id is tracked via a
+    `--cidfile`, and the container is force-removed when the call returns
+    (whether the command succeeded, timed out, or errored). `volumes` are
+    forwarded as `-v` flags, `env` as `-e` flags, and `cwd` as `-w`.
 
-    Args:
-        args: Command arguments to run in the container.
-        image: Container image to use.
-        timeout_seconds: Maximum time to wait for the process to complete.
-        max_output_size: Maximum size in bytes for stdout/stderr capture.
-        tail: If true, retain the suffix of stdout/stderr instead of the prefix.
-        env: Optional dictionary of environment variables.
-        stdin_data: Optional string data to write to stdin.
-        stdin_write_timeout: Optional timeout for writing stdin data.
-        volumes: Optional list of volume mount specifications (e.g., ["/host/path:/container/path"]).
-        cwd: Optional working directory path inside the container.
-        memory_limit_mb: Optional memory limit in megabytes for the container.
-        entrypoint: Optional override for the container image's ENTRYPOINT.
-            Passed through to podman's `--entrypoint` flag. Pass `""` to clear
-            the image's ENTRYPOINT entirely (so `args` is interpreted as the
-            full command). When `None`, the flag is omitted and the image's
-            ENTRYPOINT is used unchanged.
-
-    Example:
+    `entrypoint=""` is meaningful: it clears the image's ENTRYPOINT so that
+    `args` is interpreted as the full command. Passing `None` (the default)
+    omits the flag and leaves the image's ENTRYPOINT in place.
 
     ```python
     import asyncio
@@ -375,8 +358,7 @@ async def podman_run(
             volumes=["/host/data:/container/data"],
             cwd="/container/data",
         )
-        print(result.exit_code)
-        print(result.stdout.strip())
+        print(result.exit_code, result.stdout)
 
     asyncio.run(main())
     ```

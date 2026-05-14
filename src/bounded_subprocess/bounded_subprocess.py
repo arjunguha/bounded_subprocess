@@ -28,17 +28,17 @@ def run(
     cwd: Optional[str] = None,
 ) -> Result:
     """
-    Run a subprocess with a timeout and bounded stdout/stderr capture.
+    Run a subprocess with a wall-clock timeout and bounded output capture.
 
-    This helper starts the child in a new session so timeout cleanup can kill
-    the entire process group. Stdout and stderr are read in nonblocking mode and
-    truncated to `max_output_size` bytes each. By default the captured output
-    is the prefix; set `tail=True` to retain the suffix instead. If the timeout
-    elapses, the returned `Result.timeout` is True and `Result.exit_code` is
-    -1. If `stdin_data` cannot be fully written before `stdin_write_timeout`,
-    `Result.exit_code` is set to -1 even if the process exits normally.
+    The child is started in its own session so the timeout-cleanup path can
+    kill the entire process group, not just the child itself. Stdout and
+    stderr are read nonblockingly and each kept to at most `max_output_size`
+    bytes — the prefix by default, or the suffix when `tail=True`.
 
-    Example:
+    On timeout, `Result.timeout` is `True` and `Result.exit_code` is `-1`. If
+    `stdin_data` is supplied and cannot be fully written within
+    `stdin_write_timeout` seconds (default 15), `exit_code` is forced to `-1`
+    even when the child exits cleanly.
 
     ```python
     from bounded_subprocess import run
@@ -48,9 +48,7 @@ def run(
         timeout_seconds=5,
         max_output_size=1024,
     )
-    print(result.exit_code)
-    print(result.stdout.strip())
-    print(result.stderr.strip())
+    print(result.exit_code, result.stdout.strip(), result.stderr.strip())
     ```
     """
     deadline = time.time() + timeout_seconds

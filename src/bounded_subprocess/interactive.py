@@ -88,21 +88,24 @@ class _InteractiveState:
 @typechecked
 class Interactive:
     """
-    Interact with a subprocess using nonblocking I/O.
+    A long-lived subprocess you can write to and read lines from.
 
-    The subprocess is started with pipes for stdin and stdout. Writes are
-    bounded by a timeout, and reads return complete lines (without the trailing
-    newline). The internal buffer is capped at `read_buffer_size`; older bytes
-    are dropped if output grows without line breaks.
+    The child is started with nonblocking stdin/stdout pipes. `write` is
+    bounded by a timeout; `read_line` returns one complete line at a time
+    (without the trailing newline) or `None` on timeout / EOF.
 
-    Example:
+    `read_buffer_size` caps how many bytes of recent stdout are retained
+    while waiting for a newline. Lines longer than this will be silently
+    truncated from the front — useful for shielding the parent from a child
+    that spews structured output without ever emitting `\\n`, but lossy if
+    you actually need to read very long lines.
 
     ```python
     from bounded_subprocess.interactive import Interactive
 
     proc = Interactive(["python3", "-u", "-c", "print(input())"], read_buffer_size=4096)
-    ok = proc.write(b"hello\n", timeout_seconds=1)
-    line = proc.read_line(timeout_seconds=1)
+    proc.write(b"hello\\n", timeout_seconds=1)
+    line = proc.read_line(timeout_seconds=1)   # b'hello'
     rc = proc.close(nice_timeout_seconds=1)
     ```
     """
@@ -113,21 +116,14 @@ class Interactive:
         read_buffer_size: int,
         cwd: Optional[str] = None,
     ) -> None:
-        """
-        Start a subprocess with a bounded stdout buffer.
-
-        The child process is created with nonblocking stdin/stdout pipes. The
-        internal read buffer keeps at most `read_buffer_size` bytes of recent
-        output. If `cwd` is given, the subprocess is started in that directory.
-        """
+        """Spawn the child process. See the class docstring for parameter semantics."""
         self._state = _InteractiveState(args, read_buffer_size, cwd=cwd)
 
     def close(self, nice_timeout_seconds: int) -> int:
         """
-        Close pipes, wait briefly, then kill the subprocess.
-
-        Returns the subprocess return code, or -9 if the process is still
-        running when it is killed.
+        Close the pipes, wait up to `nice_timeout_seconds` for a clean exit,
+        then `SIGKILL` if still running. Returns the child's exit code, or
+        `-9` if it had to be killed.
         """
         self._state.close_pipes()
         for _ in range(nice_timeout_seconds):
@@ -139,9 +135,8 @@ class Interactive:
 
     def write(self, stdin_data: bytes, timeout_seconds: int) -> bool:
         """
-        Write `stdin_data` to the subprocess within `timeout_seconds`.
-
-        Returns False if the subprocess has already exited or if writing fails.
+        Write `stdin_data` to the child within the timeout. Returns `False`
+        if the child has already exited or the write fails (e.g. broken pipe).
         """
         if self._state.poll() is not None:
             return False
@@ -154,9 +149,8 @@ class Interactive:
 
     def read_line(self, timeout_seconds: int) -> Optional[bytes]:
         """
-        Read the next line from stdout, or return None on timeout/EOF.
-
-        The returned line does not include the trailing newline byte.
+        Read the next line of stdout (without the trailing newline), or
+        return `None` on timeout / EOF.
         """
         line = self._state.pop_line(0)
         if line is not None:

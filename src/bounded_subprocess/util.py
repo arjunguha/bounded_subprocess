@@ -21,12 +21,13 @@ SLEEP_BETWEEN_WRITES = 0.01
 @dataclasses.dataclass
 class Result:
     """
-    Result of a bounded subprocess run.
+    The result of a bounded subprocess run.
 
-    The `stdout` and `stderr` fields contain at most the requested number of
-    bytes, decoded with errors ignored. `timeout` is True only when the overall
-    timeout elapses. When a timeout or stdin write failure occurs, `exit_code`
-    is -1.
+    `stdout` and `stderr` each contain at most `max_output_size` bytes, decoded
+    with `errors="ignore"`. `timeout` is `True` only when the wall-clock
+    deadline elapsed. `exit_code` is the child's exit status, or `-1` when the
+    run was aborted by timeout, by a failed stdin write, or by the memory
+    watchdog.
     """
 
     timeout: int
