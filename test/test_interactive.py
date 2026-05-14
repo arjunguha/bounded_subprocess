@@ -114,6 +114,19 @@ def test_double_close():
 
 
 @pytest.mark.timeout(5)
+def test_cwd(tmp_path):
+    p = Interactive(
+        ["python3", "-u", "-c", "import os; print(os.getcwd())"],
+        read_buffer_size=4096,
+        cwd=str(tmp_path),
+    )
+    line = p.read_line(timeout_seconds=3)
+    assert line is not None
+    assert Path(line.decode()).resolve() == tmp_path.resolve()
+    assert p.close(1) == 0
+
+
+@pytest.mark.timeout(5)
 def test_close_after_normal_exit():
     p = Interactive(
         ["python3", ROOT / "dies_shortly_after_launch.py"],

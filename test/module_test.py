@@ -160,6 +160,18 @@ def test_stdin_data_echo():
     assert_no_running_evil()
 
 
+def test_cwd(tmp_path):
+    result = run(
+        ["pwd"],
+        timeout_seconds=2,
+        max_output_size=1024,
+        cwd=str(tmp_path),
+    )
+    assert result.exit_code == 0
+    assert result.timeout is False
+    assert Path(result.stdout.strip()).resolve() == tmp_path.resolve()
+
+
 def test_read_one_line():
     """
     The test program reads just one line of input, but we are trying to send

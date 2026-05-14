@@ -15,9 +15,15 @@ _SLEEP_AFTER_WOUND_BLOCK = 0.5
 class _InteractiveState:
     """Shared implementation for synchronous and asynchronous interaction."""
 
-    def __init__(self, args: List[str], read_buffer_size: int) -> None:
+    def __init__(
+        self,
+        args: List[str],
+        read_buffer_size: int,
+        cwd: Optional[str] = None,
+    ) -> None:
         popen = subprocess.Popen(
             args,
+            cwd=cwd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             bufsize=MAX_BYTES_PER_READ,
@@ -101,15 +107,20 @@ class Interactive:
     ```
     """
 
-    def __init__(self, args: List[str], read_buffer_size: int) -> None:
+    def __init__(
+        self,
+        args: List[str],
+        read_buffer_size: int,
+        cwd: Optional[str] = None,
+    ) -> None:
         """
         Start a subprocess with a bounded stdout buffer.
 
         The child process is created with nonblocking stdin/stdout pipes. The
         internal read buffer keeps at most `read_buffer_size` bytes of recent
-        output.
+        output. If `cwd` is given, the subprocess is started in that directory.
         """
-        self._state = _InteractiveState(args, read_buffer_size)
+        self._state = _InteractiveState(args, read_buffer_size, cwd=cwd)
 
     def close(self, nice_timeout_seconds: int) -> int:
         """

@@ -10,8 +10,13 @@ from .util import write_nonblocking_async, can_read, MAX_BYTES_PER_READ
 class Interactive:
     """Asynchronous interface for interacting with a subprocess."""
 
-    def __init__(self, args: List[str], read_buffer_size: int) -> None:
-        self._state = _InteractiveState(args, read_buffer_size)
+    def __init__(
+        self,
+        args: List[str],
+        read_buffer_size: int,
+        cwd: Optional[str] = None,
+    ) -> None:
+        self._state = _InteractiveState(args, read_buffer_size, cwd=cwd)
 
     async def close(self, nice_timeout_seconds: int) -> int:
         self._state.close_pipes()

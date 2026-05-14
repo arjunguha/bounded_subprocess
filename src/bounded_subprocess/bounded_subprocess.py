@@ -24,6 +24,7 @@ def run(
     env=None,
     stdin_data: Optional[str] = None,
     stdin_write_timeout: Optional[int] = None,
+    cwd: Optional[str] = None,
 ) -> Result:
     """
     Run a subprocess with a timeout and bounded stdout/stderr capture.
@@ -55,6 +56,7 @@ def run(
     p = subprocess.Popen(
         args,
         env=env,
+        cwd=cwd,
         stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

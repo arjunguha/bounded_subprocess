@@ -158,6 +158,7 @@ async def run(
     stdin_write_timeout: Optional[int] = None,
     memory_limit_mb: Optional[int] = None,
     memory_watchdog_interval_seconds: float = 1.0,
+    cwd: Optional[str] = None,
 ) -> Result:
     """
     Run a subprocess asynchronously with bounded stdout/stderr capture.
@@ -197,6 +198,7 @@ async def run(
     p = subprocess.Popen(
         args,
         env=env,
+        cwd=cwd,
         stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
