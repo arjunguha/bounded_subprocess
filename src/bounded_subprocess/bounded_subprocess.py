@@ -30,14 +30,14 @@ def run(
     """
     Run a subprocess with a wall-clock timeout and bounded output capture.
 
-    The child is started in its own session so the timeout-cleanup path can
-    kill the entire process group, not just the child itself. Stdout and
-    stderr are read nonblockingly and each kept to at most `max_output_size`
-    bytes — the prefix by default, or the suffix when `tail=True`.
+    The child runs in its own session, so on timeout we kill the entire
+    process group, not just the child itself. We read stdout and stderr
+    nonblockingly and keep at most `max_output_size` bytes from each — the
+    prefix by default, or the suffix when `tail=True`.
 
-    On timeout, `Result.timeout` is `True` and `Result.exit_code` is `-1`. If
-    `stdin_data` is supplied and cannot be fully written within
-    `stdin_write_timeout` seconds (default 15), `exit_code` is forced to `-1`
+    On timeout, `Result.timeout` is `True` and `Result.exit_code` is `-1`.
+    If you pass `stdin_data` and we cannot finish writing it within
+    `stdin_write_timeout` seconds (default 15), we force `exit_code` to `-1`
     even when the child exits cleanly.
 
     ```python

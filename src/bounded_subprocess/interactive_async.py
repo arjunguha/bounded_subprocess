@@ -13,8 +13,8 @@ class Interactive:
 
     Same model — a long-lived child with nonblocking line-oriented I/O — but
     `write`, `read_line`, and `close` are coroutines. `read_buffer_size`
-    caps retained stdout the same way; lines longer than the buffer are
-    silently truncated from the front.
+    caps retained stdout the same way; lines longer than the buffer lose
+    bytes from the front.
 
     ```python
     import asyncio
@@ -42,8 +42,8 @@ class Interactive:
     async def close(self, nice_timeout_seconds: int) -> int:
         """
         Close the pipes, wait up to `nice_timeout_seconds` for a clean exit,
-        then `SIGKILL` if still running. Returns the child's exit code, or
-        `-9` if it had to be killed.
+        then `SIGKILL` the child if it is still running. Returns the child's
+        exit code, or `-9` if we had to kill it.
         """
         self._state.close_pipes()
         for _ in range(nice_timeout_seconds):
@@ -56,7 +56,7 @@ class Interactive:
     async def write(self, stdin_data: bytes, timeout_seconds: int) -> bool:
         """
         Write `stdin_data` to the child within the timeout. Returns `False`
-        if the child has already exited or the write fails.
+        if the child already exited or the write failed.
         """
         if self._state.poll() is not None:
             return False

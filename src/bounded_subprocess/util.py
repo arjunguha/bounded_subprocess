@@ -23,11 +23,11 @@ class Result:
     """
     The result of a bounded subprocess run.
 
-    `stdout` and `stderr` each contain at most `max_output_size` bytes, decoded
-    with `errors="ignore"`. `timeout` is `True` only when the wall-clock
-    deadline elapsed. `exit_code` is the child's exit status, or `-1` when the
-    run was aborted by timeout, by a failed stdin write, or by the memory
-    watchdog.
+    `stdout` and `stderr` each contain at most `max_output_size` bytes; we
+    decode them with `errors="ignore"`. `timeout` is `True` only when the
+    wall-clock deadline elapsed. `exit_code` holds the child's exit status,
+    or `-1` when the run aborted because of a timeout, a failed stdin write,
+    or the memory watchdog.
     """
 
     timeout: int

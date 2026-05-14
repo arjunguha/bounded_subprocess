@@ -13,14 +13,13 @@ A buggy program can:
 `bounded_subprocess` is a small wrapper around `subprocess` that adds three
 hard bounds:
 
-1. **Process-group cleanup.** The child is started in a new session, so on
-   timeout we can kill the entire process group — including anything it
-   forked.
-2. **Bounded output capture.** Stdout and stderr are each truncated to
-   `max_output_size` bytes (the prefix by default, or the suffix if you set
-   `tail=True`).
+1. **Process-group cleanup.** The child runs in its own session, so on
+   timeout we kill the entire process group — including anything it forked.
+2. **Bounded output capture.** We keep at most `max_output_size` bytes from
+   each of stdout and stderr — the prefix by default, the suffix when
+   `tail=True` — and discard the rest.
 3. **Wall-clock timeout.** A single deadline governs the run, regardless of
-   how the child is behaving on its pipes.
+   what the child does on its pipes.
 
 This is *not* isolation: the child can still touch the filesystem, the
 network, or escape into a new session of its own. If you need isolation,

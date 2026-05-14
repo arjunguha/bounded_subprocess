@@ -164,19 +164,19 @@ async def run(
     """
     Async counterpart of `bounded_subprocess.run`, with an optional memory limit.
 
-    The child is started in its own session and awaited until it exits or the
-    deadline elapses. Stdout and stderr are read nonblockingly and kept to at
-    most `max_output_size` bytes each (prefix by default; suffix when
+    The child runs in its own session, and we await it until it exits or the
+    deadline elapses. We read stdout and stderr nonblockingly and keep at most
+    `max_output_size` bytes from each (prefix by default; suffix when
     `tail=True`). On timeout, `Result.timeout` is `True` and `Result.exit_code`
     is `-1`. A failed `stdin_data` write within `stdin_write_timeout` also
-    forces `exit_code` to `-1`, even if the child exits cleanly.
+    forces `exit_code` to `-1`, even when the child exits cleanly.
 
-    When `memory_limit_mb` is set, a watchdog polls aggregate peak RSS
+    When you set `memory_limit_mb`, a watchdog polls aggregate peak RSS
     (`VmHWM` from `/proc`, summed across the process group) every
-    `memory_watchdog_interval_seconds` and kills the whole group when the
-    limit is exceeded. This is a deliberate non-cgroup approximation — it
-    overcounts shared pages and can miss very short-lived children — but it
-    works without elevated privileges on a typical cluster node.
+    `memory_watchdog_interval_seconds` and kills the whole group when usage
+    exceeds the limit. We accept this non-cgroup approximation deliberately:
+    it overcounts shared pages and can miss very short-lived children, but
+    it works without elevated privileges on a typical cluster node.
 
     ```python
     import asyncio
@@ -335,14 +335,14 @@ async def podman_run(
     """
     Run a command inside a podman container, with the same bounds as `run`.
 
-    The container is launched with `--rm -i`, its id is tracked via a
-    `--cidfile`, and the container is force-removed when the call returns
-    (whether the command succeeded, timed out, or errored). `volumes` are
-    forwarded as `-v` flags, `env` as `-e` flags, and `cwd` as `-w`.
+    We launch the container with `--rm -i`, track its id through a
+    `--cidfile`, and force-remove it when the call returns (whether the
+    command succeeded, timed out, or errored). `volumes` flow through as
+    `-v` flags, `env` as `-e` flags, and `cwd` as `-w`.
 
-    `entrypoint=""` is meaningful: it clears the image's ENTRYPOINT so that
-    `args` is interpreted as the full command. Passing `None` (the default)
-    omits the flag and leaves the image's ENTRYPOINT in place.
+    `entrypoint=""` is meaningful: it clears the image's ENTRYPOINT, so
+    `args` becomes the full command. Passing `None` (the default) omits
+    the flag entirely and leaves the image's ENTRYPOINT in place.
 
     ```python
     import asyncio

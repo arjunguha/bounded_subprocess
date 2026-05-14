@@ -90,15 +90,14 @@ class Interactive:
     """
     A long-lived subprocess you can write to and read lines from.
 
-    The child is started with nonblocking stdin/stdout pipes. `write` is
-    bounded by a timeout; `read_line` returns one complete line at a time
-    (without the trailing newline) or `None` on timeout / EOF.
+    The child runs with nonblocking stdin/stdout pipes. `write` honors a
+    timeout; `read_line` returns one complete line at a time (without the
+    trailing newline) or `None` on timeout / EOF.
 
-    `read_buffer_size` caps how many bytes of recent stdout are retained
-    while waiting for a newline. Lines longer than this will be silently
-    truncated from the front — useful for shielding the parent from a child
-    that spews structured output without ever emitting `\\n`, but lossy if
-    you actually need to read very long lines.
+    `read_buffer_size` caps how many bytes of recent stdout we retain while
+    waiting for a newline. Lines longer than this lose bytes from the front
+    — useful when a child spews structured output without ever emitting
+    `\\n`, but lossy if you actually need to read very long lines.
 
     ```python
     from bounded_subprocess.interactive import Interactive
@@ -122,8 +121,8 @@ class Interactive:
     def close(self, nice_timeout_seconds: int) -> int:
         """
         Close the pipes, wait up to `nice_timeout_seconds` for a clean exit,
-        then `SIGKILL` if still running. Returns the child's exit code, or
-        `-9` if it had to be killed.
+        then `SIGKILL` the child if it is still running. Returns the child's
+        exit code, or `-9` if we had to kill it.
         """
         self._state.close_pipes()
         for _ in range(nice_timeout_seconds):
@@ -136,7 +135,7 @@ class Interactive:
     def write(self, stdin_data: bytes, timeout_seconds: int) -> bool:
         """
         Write `stdin_data` to the child within the timeout. Returns `False`
-        if the child has already exited or the write fails (e.g. broken pipe).
+        if the child already exited or the write failed (e.g. broken pipe).
         """
         if self._state.poll() is not None:
             return False
