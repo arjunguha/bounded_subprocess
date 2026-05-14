@@ -1,5 +1,1 @@
-Add a tail: bool = False flag the run commands that makes them save a suffix instead of prefix of the output. Have this conditional saving code in a nice abstraction (separate for sync and async if needed). Test well.
-
----
-
 commit this. then uv sync, bump minor version and commit again.
