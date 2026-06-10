@@ -122,9 +122,6 @@ async def write_nonblocking_async(*, fd, data: bytes, timeout_seconds: int) -> b
         try:
             # Write as much as possible without blocking.
             written = fd.write(mv[start:])
-            if written is None:
-                written = 0
-            start = start + written
         except BrokenPipeError:
             return False
         except BlockingIOError as exn:
@@ -133,18 +130,25 @@ async def write_nonblocking_async(*, fd, data: bytes, timeout_seconds: int) -> b
                 # you are only supposed to retry on EAGAIN.
                 return False
             # Some, but not all the bytes were written.
-            start = start + exn.characters_written
+            written = exn.characters_written
+        # Raw nonblocking writers return None, rather than raising
+        # BlockingIOError, when the pipe is full.
+        if written is None:
+            written = 0
+        start = start + written
+        if start >= len(mv):
+            break
 
-            # Compute how much more time we have left.
-            wait_timeout = timeout_seconds - (time.time() - start_time_seconds)
-            # We are already past the deadline, so abort.
-            if wait_timeout <= 0:
-                return False
-            try:
-                await asyncio.wait_for(can_write(fd), wait_timeout)
-            except asyncio.TimeoutError:
-                # Deadline elapsed, so abort.
-                return False
+        # The pipe is full. Compute how much more time we have left.
+        wait_timeout = timeout_seconds - (time.time() - start_time_seconds)
+        # We are already past the deadline, so abort.
+        if wait_timeout <= 0:
+            return False
+        try:
+            await asyncio.wait_for(can_write(fd), wait_timeout)
+        except asyncio.TimeoutError:
+            # Deadline elapsed, so abort.
+            return False
 
     return True
 

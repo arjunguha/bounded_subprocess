@@ -60,18 +60,17 @@ class Interactive:
         """
         if self._state.poll() is not None:
             return False
-        write_ok = await write_nonblocking_async(
-            fd=self._state.popen.stdin,
+        # Write to the raw file, bypassing the BufferedWriter: a buffered
+        # write can accept bytes into its user-space buffer while the flush
+        # fails, in which case the payload would be delivered by a later
+        # flush even though we report False. The raw write guarantees that
+        # True means delivered and False means the payload never entered the
+        # pipe. No flush is needed because nothing is buffered.
+        return await write_nonblocking_async(
+            fd=self._state.popen.stdin.raw,
             data=stdin_data,
             timeout_seconds=timeout_seconds,
         )
-        if not write_ok:
-            return False
-        try:
-            self._state.popen.stdin.flush()
-        except (BlockingIOError, BrokenPipeError):
-            return False
-        return True
 
     # I think I have reinvented buffered line reading. I dimly recall studying
     # this in excruciating detail in CS153. The difference here is that there
