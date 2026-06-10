@@ -9,7 +9,10 @@ cleanup.
 """
 
 import fcntl
+import os
+import shutil
 import time
+import uuid
 from pathlib import Path
 
 import pytest
@@ -17,7 +20,7 @@ import asyncio
 
 from bounded_subprocess.interactive import Interactive as SyncInteractive
 from bounded_subprocess.interactive_async import Interactive as AsyncInteractive
-from bounded_subprocess.bounded_subprocess_async import run as async_run
+from bounded_subprocess.bounded_subprocess_async import podman_run, run as async_run
 
 ROOT = Path(__file__).resolve().parent / "evil_programs"
 
@@ -203,3 +206,126 @@ async def test_memory_watchdog_runs_during_stdin_write_phase():
         f"run took {elapsed:.1f}s: the memory watchdog did not run while the "
         "stdin write phase was blocked"
     )
+
+
+async def _marked_container_running(real_podman: str, marker: str) -> bool:
+    """Whether a currently running container's command contains `marker`."""
+    ps = await async_run(
+        [real_podman, "ps", "--no-trunc", "--format", "{{.Command}}"],
+        timeout_seconds=10,
+        max_output_size=65536,
+    )
+    assert ps.exit_code == 0
+    return marker in ps.stdout
+
+
+async def _force_remove_marked_containers(real_podman: str, marker: str) -> None:
+    """Best-effort cleanup of any container whose command contains `marker`."""
+    ps = await async_run(
+        [real_podman, "ps", "-a", "--no-trunc", "--format", "{{.ID}} {{.Command}}"],
+        timeout_seconds=10,
+        max_output_size=65536,
+    )
+    for line in ps.stdout.splitlines():
+        if marker in line:
+            await async_run(
+                [real_podman, "rm", "-f", "-t", "0", line.split()[0]],
+                timeout_seconds=10,
+                max_output_size=1024,
+            )
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(60)
+async def test_podman_run_timeout_before_container_starts_does_not_leak(
+    monkeypatch, tmp_path
+):
+    """
+    BUG: podman_run never kills the `podman run` client process; on the way
+    out it only force-removes the container named by the cidfile. If the
+    timeout fires before podman has created the container (slow image pull,
+    loaded machine, small timeout), the cidfile is still empty and the
+    removal is a no-op. The still-running client then creates and starts the
+    container *after* podman_run has returned, and nothing ever stops it: the
+    container outlasts the timeout by its full natural lifetime.
+
+    A podman shim on PATH delays only the `run` subcommand by 3 seconds to
+    model slow container creation. With timeout_seconds=1, podman_run returns
+    before the container exists; the container must nevertheless never start.
+    """
+    real_podman = shutil.which("podman")
+    assert real_podman is not None
+    marker = f"bounded-podman-leak-{uuid.uuid4()}"
+    shim = tmp_path / "podman"
+    shim.write_text(
+        f'#!/bin/sh\nif [ "$1" = run ]; then sleep 3; fi\nexec {real_podman} "$@"\n'
+    )
+    shim.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+
+    try:
+        result = await podman_run(
+            ["sh", "-c", f"true {marker}; sleep 30"],
+            image="alpine:latest",
+            timeout_seconds=1,
+            max_output_size=1024,
+        )
+        assert result.timeout is True
+
+        # Give the leaked client time to wake up (3 s shim delay) and start
+        # the container, then verify that the container never started.
+        await asyncio.sleep(5)
+        assert not await _marked_container_running(real_podman, marker), (
+            "the container started after podman_run timed out and returned"
+        )
+    finally:
+        await _force_remove_marked_containers(real_podman, marker)
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(60)
+async def test_podman_run_cancellation_does_not_leak_container():
+    """
+    BUG: podman_run's cleanup is on the straight-line path rather than in a
+    `finally`. If the caller's task is cancelled (a common pattern: an
+    enclosing `asyncio.wait_for`), CancelledError propagates out of the
+    output-collection await and the `podman rm` cleanup never runs. The
+    container keeps running with nothing bounding it.
+    """
+    real_podman = shutil.which("podman")
+    assert real_podman is not None
+    marker = f"bounded-podman-cancel-{uuid.uuid4()}"
+
+    task = asyncio.create_task(
+        podman_run(
+            ["sh", "-c", f"true {marker}; sleep 30"],
+            image="alpine:latest",
+            timeout_seconds=30,
+            max_output_size=1024,
+        )
+    )
+    try:
+        # Wait for the container to come up, then cancel podman_run while it
+        # is collecting output.
+        started = False
+        for _ in range(80):
+            if await _marked_container_running(real_podman, marker):
+                started = True
+                break
+            await asyncio.sleep(0.25)
+        assert started, "the container never started; cannot exercise cancellation"
+
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        # The container must be gone once podman_run has unwound.
+        gone = False
+        for _ in range(8):
+            if not await _marked_container_running(real_podman, marker):
+                gone = True
+                break
+            await asyncio.sleep(0.25)
+        assert gone, "the container kept running after podman_run was cancelled"
+    finally:
+        await _force_remove_marked_containers(real_podman, marker)
