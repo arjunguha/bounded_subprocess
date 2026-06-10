@@ -6,15 +6,18 @@ execution time and output size, with support for both synchronous and asynchrono
 execution patterns.
 """
 
-__version__ = "1.0.0"
-
-
 # Lazy imports for better startup performance
 def __getattr__(name):
     if name == "run":
         from .bounded_subprocess import run
 
         return run
+    elif name == "__version__":
+        # Resolve from the installed package metadata so the version cannot
+        # drift from pyproject.toml.
+        from importlib.metadata import version
+
+        return version("bounded_subprocess")
     elif name == "Result":
         from .util import Result
 
