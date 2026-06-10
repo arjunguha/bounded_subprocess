@@ -1,4 +1,7 @@
 import time
+import os
+import subprocess
+import uuid
 from pathlib import Path
 from bounded_subprocess.interactive_async import Interactive
 import pytest
@@ -6,6 +9,34 @@ import pytest_asyncio
 import asyncio
 
 ROOT = Path(__file__).resolve().parent / "evil_programs"
+
+
+def _marker_pids(marker):
+    result = subprocess.run(
+        ["pgrep", "-f", marker],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if result.returncode == 1:
+        return []
+    assert result.returncode == 0, result.stderr
+    return [int(line) for line in result.stdout.splitlines()]
+
+
+async def _kill_marker_processes(marker):
+    for pid in _marker_pids(marker):
+        try:
+            os.kill(pid, 9)
+        except ProcessLookupError:
+            pass
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        if not _marker_pids(marker):
+            return
+        await asyncio.sleep(0.05)
+    assert _marker_pids(marker) == []
 
 
 @pytest.mark.asyncio
@@ -19,6 +50,25 @@ async def test_does_not_read():
     # set timeouts appropriately.
     assert not await p.write(b"x" * 128 * 1024, timeout_seconds=5)
     assert await p.close(1) == -9
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(5)
+async def test_write_flushes_to_child():
+    p = Interactive(
+        [
+            "python3",
+            "-u",
+            "-c",
+            "line = input(); print(line, flush=True)",
+        ],
+        read_buffer_size=1024,
+    )
+    try:
+        assert await p.write(b"hello\n", timeout_seconds=1)
+        assert await p.read_line(timeout_seconds=1) == b"hello"
+    finally:
+        await p.close(1)
 
 
 @pytest.mark.asyncio
@@ -148,3 +198,22 @@ async def test_close_after_normal_exit():
     )
     await asyncio.sleep(2)
     assert await p.close(1) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(5)
+async def test_close_kills_forked_child_processes_async():
+    marker = f"bounded-interactive-leak-{uuid.uuid4()}"
+    p = Interactive(
+        ["python3", ROOT / "fork_child_marker.py", marker],
+        read_buffer_size=1024,
+    )
+    leaked_pids = []
+    try:
+        assert await p.read_line(timeout_seconds=2) == b"ready"
+        await p.close(1)
+        leaked_pids = _marker_pids(marker)
+    finally:
+        await _kill_marker_processes(marker)
+
+    assert leaked_pids == []

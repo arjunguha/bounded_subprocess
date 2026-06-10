@@ -242,6 +242,31 @@ async def test_run_memory_limit_exceeded_in_child_process():
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(6)
+async def test_run_memory_limit_exceeded_after_parent_exits():
+    result = await run(
+        [
+            "python3",
+            "-c",
+            (
+                "import os, time\n"
+                "pid = os.fork()\n"
+                "if pid != 0:\n"
+                "    os._exit(0)\n"
+                "_ = bytearray(64 * 1024 * 1024)\n"
+                "time.sleep(5)\n"
+            ),
+        ],
+        timeout_seconds=3,
+        max_output_size=1024,
+        memory_limit_mb=32,
+        memory_watchdog_interval_seconds=0.05,
+    )
+    assert result.exit_code == -1
+    assert result.timeout is False
+
+
+@pytest.mark.asyncio
 async def test_podman_run_stdin():
     """Test podman_run with stdin_data input."""
     data = "hello container\n"
