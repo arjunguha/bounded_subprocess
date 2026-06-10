@@ -1,0 +1,29 @@
+I want you to read the code and documentation in this repository very carefully. It's well-documented, so the intention should be clear. I want you to find bugs. Don't try to fix them first, just try to find bugs and turn them into test cases that fail, so that I can first examine them before you go off and try to fix them. Careful with what you do, that you don't bring my system down. So don't, for example, forkbomb it. So those are the kinds of test cases you should skip.
+
+---
+
+That's not what I meant. I think you can run the fork bomb test that I already have because it passes. If you write a new test that you think is going to end up, for example, fork bombing my machine, please do write it, but don't run it.
+
+---
+
+That's also not what I meant. If there's an existing test that you think is gonna actually crash my machine, don't run it. Basically, don't crash my computer.
+
+---
+
+Please be serious. Package version metadata is fucking stupid to test for. I'm looking for real bugs.
+
+---
+
+Are these new ones actually bugs? I mean, they're weird corner cases, but it's still safe.
+
+---
+
+For run, I would just document it. I don't think these are bugs. So, I would disable the test or just delete them and document the contract.
+
+---
+
+Any other bugs?
+
+---
+
+Okay, make two commits. First, the updates to the contracts. Second, these new tests fail. Then, fix the failing tests and run the whole test suite.

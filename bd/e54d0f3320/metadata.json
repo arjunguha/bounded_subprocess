@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "bde54d0f3320",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "src/bounded_subprocess/bounded_subprocess_async.py",
+    "src/bounded_subprocess/interactive.py",
+    "src/bounded_subprocess/interactive_async.py",
+    "test/test_async.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/bd/e54d0f3320/0/metadata.json",
+      "transcript": "/bd/e54d0f3320/0/full.jsonl",
+      "content_hash": "/bd/e54d0f3320/0/content_hash.txt",
+      "prompt": "/bd/e54d0f3320/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 364674,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 9020928,
+    "output_tokens": 35128,
+    "api_call_count": 92
+  }
+}
