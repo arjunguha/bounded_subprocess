@@ -27,3 +27,7 @@ Any other bugs?
 ---
 
 Okay, make two commits. First, the updates to the contracts. Second, these new tests fail. Then, fix the failing tests and run the whole test suite.
+
+---
+
+Commit these.
