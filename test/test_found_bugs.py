@@ -1,11 +1,11 @@
 """
-Failing regression tests for suspected bugs.
+Regression tests for bugs found by reading the code against its documentation.
 
-Each test in this file documents a bug found by reading the code against its
-documentation. Every test is expected to FAIL on the current implementation;
-the docstrings explain the defect and where it lives. None of these tests
-risks destabilizing the host: the largest child allocation is 160 MiB and
-every child is killed via Interactive.close or the library's own cleanup.
+Each test documents one bug; the docstrings describe the defect (in the past
+tense of the code that has since been fixed) and where it lived. None of
+these tests risks destabilizing the host: the largest child allocation is
+160 MiB and every child is killed via Interactive.close or the library's own
+cleanup.
 """
 
 import fcntl
