@@ -174,8 +174,6 @@ async def _memory_watchdog(
     limit_kb = memory_limit_mb * 1024
     check_interval = max(0.01, memory_watchdog_interval_seconds)
     while True:
-        if p.poll() is not None:
-            return False
         aggregate_peak_rss_kb = _sum_process_group_peak_rss_kb(process_group_id)
         if aggregate_peak_rss_kb is not None and aggregate_peak_rss_kb > limit_kb:
             try:
@@ -183,6 +181,8 @@ async def _memory_watchdog(
             except ProcessLookupError:
                 pass
             return True
+        if aggregate_peak_rss_kb is None and p.poll() is not None:
+            return False
         remaining = deadline - time.time()
         if remaining <= 0:
             return False

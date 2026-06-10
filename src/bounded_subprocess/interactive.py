@@ -4,6 +4,8 @@ Interactive subprocess wrapper with nonblocking stdin/stdout.
 
 from typeguard import typechecked
 from typing import List, Optional
+import os
+import signal
 import time
 import errno
 import subprocess
@@ -26,11 +28,14 @@ class _InteractiveState:
             cwd=cwd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
+            start_new_session=True,
             bufsize=MAX_BYTES_PER_READ,
         )
+        process_group_id = os.getpgid(popen.pid)
         set_nonblocking(popen.stdin)
         set_nonblocking(popen.stdout)
         self.popen = popen
+        self.process_group_id = process_group_id
         self.read_buffer_size = read_buffer_size
         self.stdout_saved_bytes = bytearray()
 
@@ -41,12 +46,22 @@ class _InteractiveState:
     def close_pipes(self) -> None:
         try:
             self.popen.stdin.close()
-        except BlockingIOError:
+        except (BlockingIOError, BrokenPipeError, ValueError):
             pass
-        self.popen.stdout.close()
+        try:
+            self.popen.stdout.close()
+        except ValueError:
+            pass
 
     def kill(self) -> None:
-        self.popen.kill()
+        try:
+            os.killpg(self.process_group_id, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            self.popen.wait()
+        except ChildProcessError:
+            pass
 
     def return_code(self) -> int:
         rc = self.popen.returncode

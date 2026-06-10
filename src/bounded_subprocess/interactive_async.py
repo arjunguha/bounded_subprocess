@@ -60,11 +60,18 @@ class Interactive:
         """
         if self._state.poll() is not None:
             return False
-        return await write_nonblocking_async(
+        write_ok = await write_nonblocking_async(
             fd=self._state.popen.stdin,
             data=stdin_data,
             timeout_seconds=timeout_seconds,
         )
+        if not write_ok:
+            return False
+        try:
+            self._state.popen.stdin.flush()
+        except (BlockingIOError, BrokenPipeError):
+            return False
+        return True
 
     # I think I have reinvented buffered line reading. I dimly recall studying
     # this in excruciating detail in CS153. The difference here is that there

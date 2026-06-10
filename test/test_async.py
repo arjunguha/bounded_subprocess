@@ -302,7 +302,7 @@ async def test_podman_run_sleep_forever():
 async def test_podman_run_unbounded_output():
     """Test podman_run with a container that produces output forever."""
     result = await podman_run(
-        ["sh", "-c", "while true; do echo 'x' | tr -d '\\n' | head -c 100; echo; done"],
+        ["sh", "-c", "while true; do yes x | head -c 100; echo; done"],
         image="alpine:latest",
         timeout_seconds=3,
         max_output_size=1024,
