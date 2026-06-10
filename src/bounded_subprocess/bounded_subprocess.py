@@ -28,7 +28,7 @@ def run(
     cwd: Optional[str] = None,
 ) -> Result:
     """
-    Run a subprocess with a wall-clock timeout and bounded output capture.
+    Run a subprocess with a timeout and bounded output capture.
 
     The child runs in its own session, so on timeout we kill the entire
     process group, not just the child itself. We read stdout and stderr
@@ -36,9 +36,15 @@ def run(
     prefix by default, or the suffix when `tail=True`.
 
     On timeout, `Result.timeout` is `True` and `Result.exit_code` is `-1`.
-    If you pass `stdin_data` and we cannot finish writing it within
-    `stdin_write_timeout` seconds (default 15), we force `exit_code` to `-1`
-    even when the child exits cleanly.
+    `timeout_seconds` bounds output collection and the final wait for the
+    launched child process. If you pass `stdin_data`, the stdin write phase is
+    governed by `stdin_write_timeout` seconds (default 15), not preempted by
+    `timeout_seconds`; if the write cannot finish in that time, we force
+    `exit_code` to `-1` even when the child exits cleanly.
+
+    If a descendant process inherits stdout or stderr, that pipe can remain
+    open after the direct child exits. In that case this function may wait
+    until `timeout_seconds` before killing the process group.
 
     ```python
     from bounded_subprocess import run

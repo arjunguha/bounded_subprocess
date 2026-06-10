@@ -18,8 +18,10 @@ hard bounds:
 2. **Bounded output capture.** We keep at most `max_output_size` bytes from
    each of stdout and stderr — the prefix by default, the suffix when
    `tail=True` — and discard the rest.
-3. **Wall-clock timeout.** A single deadline governs the run, regardless of
-   what the child does on its pipes.
+3. **Wall-clock timeout.** The run has a hard bound while collecting output and
+   waiting for the child to exit. If you pass `stdin_data`, writing stdin has
+   its own `stdin_write_timeout`; set it no larger than your desired overall
+   deadline if that matters for your caller.
 
 This is *not* isolation: the child can still touch the filesystem, the
 network, or escape into a new session of its own. If you need isolation,
@@ -117,6 +119,19 @@ asyncio.run(main())
 Each entry point takes plenty of additional knobs (working directory,
 environment, stdin, memory limit, container volumes, …); see the reference
 below.
+
+## Timing contract for `run`
+
+`timeout_seconds` bounds output collection and the final wait for the launched
+child process. Two edge cases are worth knowing:
+
+- If `stdin_data` is supplied, the write phase is controlled by
+  `stdin_write_timeout` (default 15 seconds), not preempted by
+  `timeout_seconds`.
+- If a descendant process inherits stdout or stderr, the output pipe can remain
+  open after the direct child exits. In that case `run` may wait until
+  `timeout_seconds` before killing the process group, even if the direct child
+  has already exited.
 
 ## API reference
 

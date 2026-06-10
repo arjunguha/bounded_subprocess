@@ -204,12 +204,20 @@ async def run(
     """
     Async counterpart of `bounded_subprocess.run`, with an optional memory limit.
 
-    The child runs in its own session, and we await it until it exits or the
-    deadline elapses. We read stdout and stderr nonblockingly and keep at most
-    `max_output_size` bytes from each (prefix by default; suffix when
-    `tail=True`). On timeout, `Result.timeout` is `True` and `Result.exit_code`
-    is `-1`. A failed `stdin_data` write within `stdin_write_timeout` also
-    forces `exit_code` to `-1`, even when the child exits cleanly.
+    The child runs in its own session. We read stdout and stderr nonblockingly
+    and keep at most `max_output_size` bytes from each (prefix by default;
+    suffix when `tail=True`). On timeout, `Result.timeout` is `True` and
+    `Result.exit_code` is `-1`.
+
+    `timeout_seconds` bounds output collection and the final wait for the
+    launched child process. If you pass `stdin_data`, the stdin write phase is
+    governed by `stdin_write_timeout` seconds (default 15), not preempted by
+    `timeout_seconds`; if the write cannot finish in that time, we force
+    `exit_code` to `-1` even when the child exits cleanly.
+
+    If a descendant process inherits stdout or stderr, that pipe can remain
+    open after the direct child exits. In that case this function may wait
+    until `timeout_seconds` before killing the process group.
 
     When you set `memory_limit_mb`, a watchdog polls aggregate peak RSS
     (`VmHWM` from `/proc`, summed across the process group) every
