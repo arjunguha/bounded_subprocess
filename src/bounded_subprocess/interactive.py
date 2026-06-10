@@ -68,10 +68,15 @@ class _InteractiveState:
         return rc if rc is not None else -9
 
     def write_chunk(self, data: memoryview) -> tuple[int, bool]:
+        # Write to the raw file, bypassing the BufferedWriter. The buffered
+        # write() can accept bytes into its user-space buffer while the
+        # subsequent flush() fails, so there is no way to report how many
+        # bytes actually reached the pipe; retrying then delivers duplicates.
+        # The raw write returns exactly the count delivered, or None when the
+        # pipe is full.
         try:
-            written = self.popen.stdin.write(data)
-            self.popen.stdin.flush()
-            return written, True
+            written = self.popen.stdin.raw.write(data)
+            return (written if written is not None else 0), True
         except BlockingIOError as exn:
             if exn.errno != errno.EAGAIN:
                 return exn.characters_written, False
