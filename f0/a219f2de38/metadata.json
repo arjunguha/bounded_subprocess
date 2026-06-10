@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "f0a219f2de38",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "test/evil_programs/counts_marker_after_sleep.py",
+    "test/test_found_bugs.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/f0/a219f2de38/0/metadata.json",
+      "transcript": "/f0/a219f2de38/0/full.jsonl",
+      "content_hash": "/f0/a219f2de38/0/content_hash.txt",
+      "prompt": "/f0/a219f2de38/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2377,
+    "cache_creation_tokens": 127436,
+    "cache_read_tokens": 2903721,
+    "output_tokens": 74512,
+    "api_call_count": 33
+  }
+}
