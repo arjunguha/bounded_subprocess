@@ -483,6 +483,20 @@ async def podman_run(
             break
         await asyncio.sleep(min(0.05, remaining))
 
+    # Kill the podman client before removing the container. The client may
+    # not have created the container yet (e.g., a slow image pull): if it
+    # outlived us, it could create and start the container *after* the
+    # `podman rm` below ran, and nothing would ever stop that container.
+    # Waiting also reaps the client so it does not linger as a zombie.
+    if p.poll() is None:
+        try:
+            p.kill()
+        except ProcessLookupError:
+            pass
+    try:
+        await asyncio.wait_for(asyncio.to_thread(p.wait), timeout=5.0)
+    except (asyncio.TimeoutError, ProcessLookupError):
+        pass
     await _podman_rm(cidfile_path)
     exit_code = (
         -1 if is_timeout or (stdin_data is not None and not write_ok) else exit_code
