@@ -441,63 +441,68 @@ async def podman_run(
         bufsize=MAX_BYTES_PER_READ,
     )
 
-    set_nonblocking(p.stdout)
-    set_nonblocking(p.stderr)
-
-    write_ok = True
-    if stdin_data is not None:
-        set_nonblocking(p.stdin)
-        write_ok = await write_nonblocking_async(
-            fd=p.stdin,
-            data=stdin_data.encode(),
-            timeout_seconds=stdin_write_timeout
-            if stdin_write_timeout is not None
-            else 15,
-        )
-        try:
-            p.stdin.close()
-        except (BrokenPipeError, BlockingIOError):
-            pass
-
-    bufs = await read_to_eof_async(
-        [p.stdout, p.stderr],
-        timeout_seconds=timeout_seconds,
-        max_len=max_output_size,
-        tail=tail,
-    )
-
-    # Busy-wait for the process to exit or the deadline. Why do we need this
-    # when read_to_eof_async seems to do this? read_to_eof_async will return
-    # when the process closes stdout and stderr, but the process can continue
-    # running even after that. So, we really need to wait for an exit code.
-    exit_code = None
-    is_timeout = False
-    while True:
-        rc = p.poll()
-        if rc is not None:
-            exit_code = rc
-            break
-        remaining = deadline - time.time()
-        if remaining <= 0:
-            is_timeout = True
-            break
-        await asyncio.sleep(min(0.05, remaining))
-
-    # Kill the podman client before removing the container. The client may
-    # not have created the container yet (e.g., a slow image pull): if it
-    # outlived us, it could create and start the container *after* the
-    # `podman rm` below ran, and nothing would ever stop that container.
-    # Waiting also reaps the client so it does not linger as a zombie.
-    if p.poll() is None:
-        try:
-            p.kill()
-        except ProcessLookupError:
-            pass
+    # The finally block ensures the container is stopped and removed even if
+    # the caller cancels us (e.g., an enclosing asyncio.wait_for) or an await
+    # raises while output is being collected.
     try:
-        await asyncio.wait_for(asyncio.to_thread(p.wait), timeout=5.0)
-    except (asyncio.TimeoutError, ProcessLookupError):
-        pass
-    await _podman_rm(cidfile_path)
+        set_nonblocking(p.stdout)
+        set_nonblocking(p.stderr)
+
+        write_ok = True
+        if stdin_data is not None:
+            set_nonblocking(p.stdin)
+            write_ok = await write_nonblocking_async(
+                fd=p.stdin,
+                data=stdin_data.encode(),
+                timeout_seconds=stdin_write_timeout
+                if stdin_write_timeout is not None
+                else 15,
+            )
+            try:
+                p.stdin.close()
+            except (BrokenPipeError, BlockingIOError):
+                pass
+
+        bufs = await read_to_eof_async(
+            [p.stdout, p.stderr],
+            timeout_seconds=timeout_seconds,
+            max_len=max_output_size,
+            tail=tail,
+        )
+
+        # Busy-wait for the process to exit or the deadline. Why do we need this
+        # when read_to_eof_async seems to do this? read_to_eof_async will return
+        # when the process closes stdout and stderr, but the process can continue
+        # running even after that. So, we really need to wait for an exit code.
+        exit_code = None
+        is_timeout = False
+        while True:
+            rc = p.poll()
+            if rc is not None:
+                exit_code = rc
+                break
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                is_timeout = True
+                break
+            await asyncio.sleep(min(0.05, remaining))
+    finally:
+        # Kill the podman client before removing the container. The client may
+        # not have created the container yet (e.g., a slow image pull): if it
+        # outlived us, it could create and start the container *after* the
+        # `podman rm` below ran, and nothing would ever stop that container.
+        # Waiting also reaps the client so it does not linger as a zombie.
+        if p.poll() is None:
+            try:
+                p.kill()
+            except ProcessLookupError:
+                pass
+        try:
+            await asyncio.wait_for(asyncio.to_thread(p.wait), timeout=5.0)
+        except (asyncio.TimeoutError, ProcessLookupError):
+            pass
+        await _podman_rm(cidfile_path)
+
     exit_code = (
         -1 if is_timeout or (stdin_data is not None and not write_ok) else exit_code
     )
