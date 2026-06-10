@@ -169,7 +169,10 @@ class Interactive:
         line = self._state.pop_line(0)
         if line is not None:
             return line
-        if self._state.poll() is not None:
+        # Note that we must not return early just because the child exited:
+        # its final output may still be sitting unread in the pipe. The read
+        # loop below observes EOF (an empty read) promptly in that case.
+        if self._state.popen.stdout.closed:
             return None
         deadline = time.time() + timeout_seconds
         while time.time() < deadline:
