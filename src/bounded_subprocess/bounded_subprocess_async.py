@@ -259,6 +259,20 @@ async def run(
     set_nonblocking(p.stdout)
     set_nonblocking(p.stderr)
 
+    # Start the watchdog before the stdin write phase: a child that balloons
+    # past the limit while stalling our stdin write must still be killed.
+    memory_watchdog_task = None
+    if memory_limit_mb is not None:
+        memory_watchdog_task = asyncio.create_task(
+            _memory_watchdog(
+                p=p,
+                process_group_id=process_group_id,
+                deadline=deadline,
+                memory_limit_mb=memory_limit_mb,
+                memory_watchdog_interval_seconds=memory_watchdog_interval_seconds,
+            )
+        )
+
     write_ok = True
     if stdin_data is not None:
         set_nonblocking(p.stdin)
@@ -273,18 +287,6 @@ async def run(
             p.stdin.close()
         except (BrokenPipeError, BlockingIOError):
             pass
-
-    memory_watchdog_task = None
-    if memory_limit_mb is not None:
-        memory_watchdog_task = asyncio.create_task(
-            _memory_watchdog(
-                p=p,
-                process_group_id=process_group_id,
-                deadline=deadline,
-                memory_limit_mb=memory_limit_mb,
-                memory_watchdog_interval_seconds=memory_watchdog_interval_seconds,
-            )
-        )
 
     bufs = await read_to_eof_async(
         [p.stdout, p.stderr],
