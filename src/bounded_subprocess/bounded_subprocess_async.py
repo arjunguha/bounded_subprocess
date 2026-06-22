@@ -181,8 +181,6 @@ async def _memory_watchdog(
             except ProcessLookupError:
                 pass
             return True
-        if aggregate_peak_rss_kb is None and p.poll() is not None:
-            return False
         remaining = deadline - time.time()
         if remaining <= 0:
             return False
