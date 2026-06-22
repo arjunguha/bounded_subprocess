@@ -2,7 +2,6 @@
 Interactive subprocess wrapper with nonblocking stdin/stdout.
 """
 
-from typeguard import typechecked
 from typing import List, Optional
 import os
 import signal
@@ -105,7 +104,6 @@ class _InteractiveState:
             ]
 
 
-@typechecked
 class Interactive:
     """
     A long-lived subprocess you can write to and read lines from.

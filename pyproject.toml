@@ -10,9 +10,7 @@ description = "A library to facilitate running subprocesses that may misbehave."
 readme = "README.md"
 license = { file="LICENSE.txt" }
 requires-python = ">=3.9"
-dependencies =[
-  "typeguard>=4.4.2,<5.0.0"
-]
+dependencies = []
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",

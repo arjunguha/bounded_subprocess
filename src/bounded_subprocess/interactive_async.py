@@ -1,4 +1,3 @@
-from typeguard import typechecked
 from typing import List, Optional
 import asyncio
 import time
@@ -6,7 +5,6 @@ from .interactive import _InteractiveState
 from .util import write_nonblocking_async, can_read, MAX_BYTES_PER_READ
 
 
-@typechecked
 class Interactive:
     """
     Async counterpart of `bounded_subprocess.interactive.Interactive`.
