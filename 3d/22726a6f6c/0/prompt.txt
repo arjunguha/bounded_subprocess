@@ -1,0 +1,33 @@
+just remove those decorators, remove the dependency and commit
+
+---
+
+add ty as a dependency and setup the repo to typecheck
+
+---
+
+THAT IS WRONG
+
+---
+
+It is IMPORTNAT to use the raw handle.
+
+---
+
+WAit, don't fucking ignore all of this. What is wrong with you. supppress errors in targeted places in the file.
+
+---
+
+IT is because you're running tests on code that you broke earlier?
+
+---
+
+Kill the fucking existing run and restart.
+
+---
+
+Er, did that test fail before?
+
+---
+
+So, why is it failing now? Flaky?
