@@ -85,7 +85,7 @@ def run(
         )
         # From what I recall, closing stdin is not necessary, but is customary.
         try:
-            p.stdin.close()
+            p.stdin.close()  # ty:ignore[unresolved-attribute]
         except (BrokenPipeError, BlockingIOError):
             pass
 
@@ -126,6 +126,6 @@ def run(
     return Result(
         timeout=is_timeout,
         exit_code=exit_code,
-        stdout=bufs[0].decode(errors="ignore"),
-        stderr=bufs[1].decode(errors="ignore"),
+        stdout=bufs[0].decode(errors="ignore"),  # ty:ignore[not-subscriptable]
+        stderr=bufs[1].decode(errors="ignore"),  # ty:ignore[not-subscriptable]
     )

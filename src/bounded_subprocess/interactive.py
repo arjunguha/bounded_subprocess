@@ -44,11 +44,11 @@ class _InteractiveState:
 
     def close_pipes(self) -> None:
         try:
-            self.popen.stdin.close()
+            self.popen.stdin.close()  # ty:ignore[unresolved-attribute]
         except (BlockingIOError, BrokenPipeError, ValueError):
             pass
         try:
-            self.popen.stdout.close()
+            self.popen.stdout.close()  # ty:ignore[unresolved-attribute]
         except ValueError:
             pass
 
@@ -74,7 +74,7 @@ class _InteractiveState:
         # The raw write returns exactly the count delivered, or None when the
         # pipe is full.
         try:
-            written = self.popen.stdin.raw.write(data)
+            written = self.popen.stdin.raw.write(data)  # ty:ignore[unresolved-attribute]
             return (written if written is not None else 0), True
         except BlockingIOError as exn:
             if exn.errno != errno.EAGAIN:
@@ -84,7 +84,7 @@ class _InteractiveState:
             return 0, False
 
     def read_chunk(self) -> Optional[bytes]:
-        return self.popen.stdout.read(MAX_BYTES_PER_READ)
+        return self.popen.stdout.read(MAX_BYTES_PER_READ)  # ty:ignore[unresolved-attribute]
 
     def pop_line(self, start_idx: int) -> Optional[bytes]:
         newline_index = self.stdout_saved_bytes.find(b"\n", start_idx)
@@ -175,7 +175,7 @@ class Interactive:
         # Note that we must not return early just because the child exited:
         # its final output may still be sitting unread in the pipe. The read
         # loop below observes EOF (an empty read) promptly in that case.
-        if self._state.popen.stdout.closed:
+        if self._state.popen.stdout.closed:  # ty:ignore[unresolved-attribute]
             return None
         deadline = time.time() + timeout_seconds
         while time.time() < deadline:

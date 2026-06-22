@@ -284,7 +284,7 @@ async def run(
             else 15,
         )
         try:
-            p.stdin.close()
+            p.stdin.close()  # ty:ignore[unresolved-attribute]
         except (BrokenPipeError, BlockingIOError):
             pass
 
@@ -459,7 +459,7 @@ async def podman_run(
                 else 15,
             )
             try:
-                p.stdin.close()
+                p.stdin.close()  # ty:ignore[unresolved-attribute]
             except (BrokenPipeError, BlockingIOError):
                 pass
 
@@ -677,7 +677,7 @@ async def podman_run_stream_lines(
                 else 15,
             )
             try:
-                p.stdin.close()
+                p.stdin.close()  # ty:ignore[unresolved-attribute]
             except (BrokenPipeError, BlockingIOError):
                 pass
             if not write_ok:
@@ -704,7 +704,7 @@ async def podman_run_stream_lines(
             except asyncio.CancelledError:
                 pass
         try:
-            p.stdout.close()
+            p.stdout.close()  # ty:ignore[unresolved-attribute]
         except OSError:
             pass
         try:
@@ -713,7 +713,7 @@ async def podman_run_stream_lines(
         except OSError:
             pass
         try:
-            p.stderr.close()
+            p.stderr.close()  # ty:ignore[unresolved-attribute]
         except OSError:
             pass
         if p.poll() is None:

@@ -65,7 +65,7 @@ class Interactive:
         # True means delivered and False means the payload never entered the
         # pipe. No flush is needed because nothing is buffered.
         return await write_nonblocking_async(
-            fd=self._state.popen.stdin.raw,
+            fd=self._state.popen.stdin.raw,  # ty:ignore[unresolved-attribute]
             data=stdin_data,
             timeout_seconds=timeout_seconds,
         )
@@ -90,7 +90,7 @@ class Interactive:
         # Note that we must not return early just because the child exited:
         # its final output may still be sitting unread in the pipe. The read
         # loop below observes EOF (an empty read) promptly in that case.
-        if self._state.popen.stdout.closed:
+        if self._state.popen.stdout.closed:  # ty:ignore[unresolved-attribute]
             return None
 
         deadline = time.time() + timeout_seconds
@@ -108,7 +108,7 @@ class Interactive:
             except asyncio.TimeoutError:
                 return None
 
-            new_bytes = self._state.popen.stdout.read(MAX_BYTES_PER_READ)
+            new_bytes = self._state.popen.stdout.read(MAX_BYTES_PER_READ)  # ty:ignore[unresolved-attribute]
 
             # We append the received bytes to the buffer, and look for a newline.
             # As an optimization, we only look for a newline in the received
