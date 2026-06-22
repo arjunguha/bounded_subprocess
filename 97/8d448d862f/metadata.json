@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "978d448d862f",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "cspell.config.yaml",
+    "pyproject.toml",
+    "src/bounded_subprocess/interactive.py",
+    "src/bounded_subprocess/interactive_async.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/97/8d448d862f/0/metadata.json",
+      "transcript": "/97/8d448d862f/0/full.jsonl",
+      "content_hash": "/97/8d448d862f/0/content_hash.txt",
+      "prompt": "/97/8d448d862f/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 52534,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 504832,
+    "output_tokens": 2905,
+    "api_call_count": 16
+  }
+}
