@@ -1,4 +1,6 @@
 from bounded_subprocess import run
+
+from test.procinfo import zombie_children
 import time
 from pathlib import Path
 import pytest
@@ -235,4 +237,21 @@ def test_read_one_line():
     assert result.exit_code == -1
     assert result.timeout is False
     assert result.stdout == "I read one line\n"
+    assert_no_running_evil()
+
+
+def test_timeout_leaves_no_zombie():
+    # The timeout path kills the process group, and releasing the child also
+    # waits for it, so a timed-out run leaves no entry in the process table for
+    # the lifetime of the caller.
+    zombies_before = zombie_children()
+    result = run(
+        ["python3", ROOT / "sleep_forever.py"],
+        timeout_seconds=1,
+        max_output_size=1024,
+    )
+    assert result.timeout == True
+    assert zombie_children() <= zombies_before, (
+        "a timed-out run left its child unreaped"
+    )
     assert_no_running_evil()

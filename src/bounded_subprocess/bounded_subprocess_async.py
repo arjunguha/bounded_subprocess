@@ -12,7 +12,7 @@ from typing import AsyncIterator, List, Optional
 import logging
 
 from .cancel import uncancellable
-from .child_async import Child
+from .child import Child
 from .util import (
     Result,
     set_nonblocking,
@@ -212,7 +212,7 @@ async def _release(
             pass
         except Exception:
             logger.exception("memory watchdog failed")
-    await child.release()
+    await child.release_async()
 
 
 async def run(

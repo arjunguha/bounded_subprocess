@@ -3,18 +3,23 @@ Interactive subprocess wrapper with nonblocking stdin/stdout.
 """
 
 from typing import List, Optional
-import os
-import signal
 import time
 import errno
-import subprocess
-from .util import set_nonblocking, MAX_BYTES_PER_READ, write_loop_sync
+from .child import Child
+from .util import MAX_BYTES_PER_READ, write_loop_sync
 
 _SLEEP_AFTER_WOUND_BLOCK = 0.5
 
 
 class _InteractiveState:
-    """Shared implementation for synchronous and asynchronous interaction."""
+    """
+    The stdout line buffer for an interactive child, over a `Child`.
+
+    The child itself -- its session, its pipes, and how we let go of it -- is
+    `Child`'s business. What is left here is the part specific to talking to a
+    long-lived process: writing without blocking, and retaining recent stdout
+    while waiting for a newline.
+    """
 
     def __init__(
         self,
@@ -22,48 +27,19 @@ class _InteractiveState:
         read_buffer_size: int,
         cwd: Optional[str] = None,
     ) -> None:
-        popen = subprocess.Popen(
-            args,
-            cwd=cwd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            start_new_session=True,
-            bufsize=MAX_BYTES_PER_READ,
-        )
-        process_group_id = os.getpgid(popen.pid)
-        set_nonblocking(popen.stdin)
-        set_nonblocking(popen.stdout)
-        self.popen = popen
-        self.process_group_id = process_group_id
+        # No stderr pipe: an interactive child's stderr passes through to ours,
+        # so a crash is visible instead of being swallowed by a pipe nobody
+        # reads.
+        self.child = Child.spawn(args, cwd=cwd, stdin=True, stderr=False)
         self.read_buffer_size = read_buffer_size
         self.stdout_saved_bytes = bytearray()
 
     # --- low level helpers -------------------------------------------------
     def poll(self) -> Optional[int]:
-        return self.popen.poll()
-
-    def close_pipes(self) -> None:
-        try:
-            self.popen.stdin.close()  # ty:ignore[unresolved-attribute]
-        except (BlockingIOError, BrokenPipeError, ValueError):
-            pass
-        try:
-            self.popen.stdout.close()  # ty:ignore[unresolved-attribute]
-        except ValueError:
-            pass
-
-    def kill(self) -> None:
-        try:
-            os.killpg(self.process_group_id, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        try:
-            self.popen.wait()
-        except ChildProcessError:
-            pass
+        return self.child.poll()
 
     def return_code(self) -> int:
-        rc = self.popen.returncode
+        rc = self.child.popen.returncode
         return rc if rc is not None else -9
 
     def write_chunk(self, data: memoryview) -> tuple[int, bool]:
@@ -74,7 +50,7 @@ class _InteractiveState:
         # The raw write returns exactly the count delivered, or None when the
         # pipe is full.
         try:
-            written = self.popen.stdin.raw.write(data)  # ty:ignore[unresolved-attribute]
+            written = self.child.stdin.raw.write(data)
             return (written if written is not None else 0), True
         except BlockingIOError as exn:
             if exn.errno != errno.EAGAIN:
@@ -84,7 +60,7 @@ class _InteractiveState:
             return 0, False
 
     def read_chunk(self) -> Optional[bytes]:
-        return self.popen.stdout.read(MAX_BYTES_PER_READ)  # ty:ignore[unresolved-attribute]
+        return self.child.stdout.read(MAX_BYTES_PER_READ)
 
     def pop_line(self, start_idx: int) -> Optional[bytes]:
         newline_index = self.stdout_saved_bytes.find(b"\n", start_idx)
@@ -142,12 +118,12 @@ class Interactive:
         then `SIGKILL` the child if it is still running. Returns the child's
         exit code, or `-9` if we had to kill it.
         """
-        self._state.close_pipes()
+        self._state.child.close_pipes()
         for _ in range(nice_timeout_seconds):
             if self._state.poll() is not None:
                 break
             time.sleep(1)
-        self._state.kill()
+        self._state.child.release_sync()
         return self._state.return_code()
 
     def write(self, stdin_data: bytes, timeout_seconds: int) -> bool:
@@ -175,7 +151,7 @@ class Interactive:
         # Note that we must not return early just because the child exited:
         # its final output may still be sitting unread in the pipe. The read
         # loop below observes EOF (an empty read) promptly in that case.
-        if self._state.popen.stdout.closed:  # ty:ignore[unresolved-attribute]
+        if self._state.child.stdout.closed:
             return None
         deadline = time.time() + timeout_seconds
         while time.time() < deadline:

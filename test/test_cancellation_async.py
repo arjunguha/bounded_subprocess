@@ -18,78 +18,20 @@ import os
 import signal
 import uuid
 from pathlib import Path
-from typing import List, Optional, Set, Tuple
 
 import pytest
 
 from bounded_subprocess.bounded_subprocess_async import run
 
+from test.procinfo import live_pids_matching, open_fd_count, zombie_children
+
 ROOT = Path(__file__).resolve().parent / "evil_programs"
-
-
-def _live_pids_matching(marker: str) -> List[int]:
-    """
-    Pids whose command line contains `marker`.
-
-    We scan `/proc` instead of shelling out to `pgrep`: launching another
-    process would both pollute the match and trigger `subprocess._cleanup`,
-    which reaps abandoned children and would hide the zombies these tests look
-    for. Zombies have an empty command line, so they never show up here.
-    """
-    needle = marker.encode()
-    pids = []
-    for entry in os.scandir("/proc"):
-        if not entry.name.isdigit():
-            continue
-        try:
-            with open(f"/proc/{entry.name}/cmdline", "rb") as f:
-                cmdline = f.read()
-        except OSError:
-            continue
-        if needle in cmdline:
-            pids.append(int(entry.name))
-    return pids
-
-
-def _read_state_and_parent(pid: int) -> Optional[Tuple[str, int]]:
-    try:
-        with open(f"/proc/{pid}/stat", "r", encoding="utf-8") as f:
-            stat = f.read()
-    except OSError:
-        return None
-    right_paren = stat.rfind(")")
-    if right_paren == -1:
-        return None
-    # After "comm)", the fields are: state, ppid, ...
-    rest = stat[right_paren + 1 :].split()
-    if len(rest) < 2:
-        return None
-    try:
-        return rest[0], int(rest[1])
-    except ValueError:
-        return None
-
-
-def _zombie_children() -> Set[int]:
-    """Pids of this process's unreaped children."""
-    me = os.getpid()
-    zombies = set()
-    for entry in os.scandir("/proc"):
-        if not entry.name.isdigit():
-            continue
-        state_and_parent = _read_state_and_parent(int(entry.name))
-        if state_and_parent is None:
-            continue
-        state, ppid = state_and_parent
-        if state == "Z" and ppid == me:
-            zombies.add(int(entry.name))
-    return zombies
 
 
 async def _wait_until_running(marker: str, *, timeout_seconds: float = 5.0) -> bool:
     deadline = asyncio.get_running_loop().time() + timeout_seconds
     while asyncio.get_running_loop().time() < deadline:
-        if _live_pids_matching(marker):
+        if live_pids_matching(marker):
             return True
         await asyncio.sleep(0.05)
     return False
@@ -99,15 +41,15 @@ async def _assert_marker_is_gone(marker: str) -> None:
     # killpg does not block until the group is dead, and /proc can lag, so
     # allow a moment before declaring a leak.
     for _ in range(40):
-        survivors = _live_pids_matching(marker)
+        survivors = live_pids_matching(marker)
         if not survivors:
             return
         await asyncio.sleep(0.05)
-    pytest.fail(f"processes survived a cancelled run: {_live_pids_matching(marker)}")
+    pytest.fail(f"processes survived a cancelled run: {live_pids_matching(marker)}")
 
 
 def _kill_marker(marker: str) -> None:
-    for pid in _live_pids_matching(marker):
+    for pid in live_pids_matching(marker):
         try:
             os.kill(pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
@@ -183,7 +125,7 @@ async def test_cancelled_run_reaps_the_child():
     zombie behind for the lifetime of the caller's process.
     """
     marker = f"bounded-cancel-reap-{uuid.uuid4()}"
-    zombies_before = _zombie_children()
+    zombies_before = zombie_children()
     task = asyncio.create_task(
         run(
             ["python3", str(ROOT / "sleep_forever.py"), marker],
@@ -199,7 +141,7 @@ async def test_cancelled_run_reaps_the_child():
             await task
 
         await _assert_marker_is_gone(marker)
-        assert _zombie_children() <= zombies_before, (
+        assert zombie_children() <= zombies_before, (
             "a cancelled run left its child unreaped"
         )
     finally:
@@ -217,7 +159,7 @@ async def test_repeatedly_cancelled_run_still_kills_and_reaps():
     the child unreaped.
     """
     marker = f"bounded-cancel-twice-{uuid.uuid4()}"
-    zombies_before = _zombie_children()
+    zombies_before = zombie_children()
     task = asyncio.create_task(
         run(
             ["python3", str(ROOT / "fork_child_marker.py"), marker],
@@ -239,7 +181,7 @@ async def test_repeatedly_cancelled_run_still_kills_and_reaps():
             await task
 
         await _assert_marker_is_gone(marker)
-        assert _zombie_children() <= zombies_before, (
+        assert zombie_children() <= zombies_before, (
             "repeated cancellation cut cleanup short and left the child unreaped"
         )
     finally:
@@ -281,10 +223,6 @@ async def test_cancelled_run_does_not_leak_the_memory_watchdog():
         _kill_marker(marker)
 
 
-def _open_fd_count() -> int:
-    return len(os.listdir("/proc/self/fd"))
-
-
 @pytest.mark.asyncio
 @pytest.mark.timeout(30)
 async def test_cancelled_run_closes_its_pipes():
@@ -298,7 +236,7 @@ async def test_cancelled_run_closes_its_pipes():
     """
     marker = f"bounded-cancel-fds-{uuid.uuid4()}"
     held = []
-    baseline = _open_fd_count()
+    baseline = open_fd_count()
     try:
         for _ in range(5):
             task = asyncio.create_task(
@@ -318,7 +256,7 @@ async def test_cancelled_run_closes_its_pipes():
                 held.append(cancelled)  # keeps the traceback, and the Popen
             await _assert_marker_is_gone(marker)
 
-        assert _open_fd_count() <= baseline, (
+        assert open_fd_count() <= baseline, (
             "cancelled runs leaked descriptors while the exception was held"
         )
     finally:

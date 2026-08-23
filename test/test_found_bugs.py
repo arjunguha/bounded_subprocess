@@ -31,7 +31,7 @@ def _stdin_pipe_capacity(p) -> int:
     clean start goes through the BufferedWriter's write-through path, so it
     fills the pipe completely while leaving the user-space buffer empty.
     """
-    return fcntl.fcntl(p._state.popen.stdin.fileno(), fcntl.F_GETPIPE_SZ)
+    return fcntl.fcntl(p._state.child.stdin.fileno(), fcntl.F_GETPIPE_SZ)
 
 
 def test_version_matches_package_metadata():

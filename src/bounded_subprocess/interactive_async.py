@@ -43,12 +43,14 @@ class Interactive:
         then `SIGKILL` the child if it is still running. Returns the child's
         exit code, or `-9` if we had to kill it.
         """
-        self._state.close_pipes()
+        self._state.child.close_pipes()
         for _ in range(nice_timeout_seconds):
             if self._state.poll() is not None:
                 break
             await asyncio.sleep(1)
-        self._state.kill()
+        # The async release, so waiting for the child to die does not block the
+        # event loop the way the old blocking `popen.wait()` did.
+        await self._state.child.release_async()
         return self._state.return_code()
 
     async def write(self, stdin_data: bytes, timeout_seconds: int) -> bool:
@@ -65,7 +67,7 @@ class Interactive:
         # True means delivered and False means the payload never entered the
         # pipe. No flush is needed because nothing is buffered.
         return await write_nonblocking_async(
-            fd=self._state.popen.stdin.raw,  # ty:ignore[unresolved-attribute]
+            fd=self._state.child.stdin.raw,
             data=stdin_data,
             timeout_seconds=timeout_seconds,
         )
@@ -90,7 +92,7 @@ class Interactive:
         # Note that we must not return early just because the child exited:
         # its final output may still be sitting unread in the pipe. The read
         # loop below observes EOF (an empty read) promptly in that case.
-        if self._state.popen.stdout.closed:  # ty:ignore[unresolved-attribute]
+        if self._state.child.stdout.closed:
             return None
 
         deadline = time.time() + timeout_seconds
@@ -102,13 +104,13 @@ class Interactive:
                 if can_read_timeout <= 0:
                     return None
                 await asyncio.wait_for(
-                    can_read(self._state.popen.stdout),
+                    can_read(self._state.child.stdout),
                     timeout=can_read_timeout,
                 )
             except asyncio.TimeoutError:
                 return None
 
-            new_bytes = self._state.popen.stdout.read(MAX_BYTES_PER_READ)  # ty:ignore[unresolved-attribute]
+            new_bytes = self._state.child.stdout.read(MAX_BYTES_PER_READ)
 
             # We append the received bytes to the buffer, and look for a newline.
             # As an optimization, we only look for a newline in the received
