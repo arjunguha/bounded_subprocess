@@ -279,3 +279,48 @@ async def test_cancelled_run_does_not_leak_the_memory_watchdog():
         assert not leaked, f"a cancelled run left tasks running: {leaked}"
     finally:
         _kill_marker(marker)
+
+
+def _open_fd_count() -> int:
+    return len(os.listdir("/proc/self/fd"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(30)
+async def test_cancelled_run_closes_its_pipes():
+    """
+    Releasing the child closes our ends of its pipes.
+
+    Without that, the file objects live until the `Popen` is collected -- and a
+    caller that retains the `CancelledError` retains its traceback, which
+    retains `run`'s frame, which retains the `Popen`. Logging the exception for
+    later is enough to hold three descriptors per cancelled run.
+    """
+    marker = f"bounded-cancel-fds-{uuid.uuid4()}"
+    held = []
+    baseline = _open_fd_count()
+    try:
+        for _ in range(5):
+            task = asyncio.create_task(
+                run(
+                    ["python3", str(ROOT / "sleep_forever.py"), marker],
+                    timeout_seconds=60,
+                    max_output_size=1024,
+                    stdin_data="x" * (4 * 1024 * 1024),
+                    stdin_write_timeout=60,
+                )
+            )
+            assert await _wait_until_running(marker), "the child never started"
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError as cancelled:
+                held.append(cancelled)  # keeps the traceback, and the Popen
+            await _assert_marker_is_gone(marker)
+
+        assert _open_fd_count() <= baseline, (
+            "cancelled runs leaked descriptors while the exception was held"
+        )
+    finally:
+        held.clear()
+        _kill_marker(marker)

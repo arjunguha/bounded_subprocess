@@ -11,6 +11,8 @@ import tempfile
 from typing import AsyncIterator, List, Optional
 import logging
 
+from .cancel import uncancellable
+from .child_async import Child
 from .util import (
     Result,
     set_nonblocking,
@@ -187,6 +189,32 @@ async def _memory_watchdog(
         await asyncio.sleep(min(check_interval, remaining))
 
 
+async def _release(
+    memory_watchdog_task: Optional["asyncio.Task"], child: Child
+) -> None:
+    """
+    Let go of everything `run` acquired, in the order that makes it safe.
+
+    The watchdog stops first: it kills by process group id, and once the child
+    is reaped that id is free for reuse, so a watchdog still polling after the
+    reap is a watchdog that can signal a stranger. Awaiting the cancelled task
+    also retrieves whatever it raised, so a watchdog failure is logged here
+    rather than resurfacing as an unretrieved-exception warning later.
+
+    Total by construction: `Child.release` swallows its own failures, so this
+    never adds an exception to the one its caller is unwinding under.
+    """
+    if memory_watchdog_task is not None:
+        memory_watchdog_task.cancel()
+        try:
+            await memory_watchdog_task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.exception("memory watchdog failed")
+    await child.release()
+
+
 async def run(
     args: List[str],
     timeout_seconds: int = 15,
@@ -217,6 +245,11 @@ async def run(
     open after the direct child exits. In that case this function may wait
     until `timeout_seconds` before killing the process group.
 
+    Cancellation is safe: if the awaiting task is cancelled, the whole process
+    group is killed, the memory watchdog is stopped, and the child is reaped
+    before `CancelledError` propagates. That cleanup is shielded, so it still
+    completes if the caller keeps cancelling while we unwind.
+
     When you set `memory_limit_mb`, a watchdog polls aggregate peak RSS
     (`VmHWM` from `/proc`, summed across the process group) every
     `memory_watchdog_interval_seconds` and kills the whole group when usage
@@ -242,20 +275,7 @@ async def run(
 
     deadline = time.time() + timeout_seconds
 
-    p = subprocess.Popen(
-        args,
-        env=env,
-        cwd=cwd,
-        stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=True,
-        bufsize=MAX_BYTES_PER_READ,
-    )
-    process_group_id = os.getpgid(p.pid)
-
-    set_nonblocking(p.stdout)
-    set_nonblocking(p.stderr)
+    child = Child.spawn(args, env=env, cwd=cwd, stdin=stdin_data is not None)
 
     # Start the watchdog before the stdin write phase: a child that balloons
     # past the limit while stalling our stdin write must still be killed.
@@ -263,31 +283,71 @@ async def run(
     if memory_limit_mb is not None:
         memory_watchdog_task = asyncio.create_task(
             _memory_watchdog(
-                p=p,
-                process_group_id=process_group_id,
+                p=child.popen,
+                process_group_id=child.process_group_id,
                 deadline=deadline,
                 memory_limit_mb=memory_limit_mb,
                 memory_watchdog_interval_seconds=memory_watchdog_interval_seconds,
             )
         )
 
+    try:
+        result = await _collect_bounded(
+            child,
+            deadline=deadline,
+            memory_watchdog_task=memory_watchdog_task,
+            timeout_seconds=timeout_seconds,
+            max_output_size=max_output_size,
+            tail=tail,
+            stdin_data=stdin_data,
+            stdin_write_timeout=stdin_write_timeout,
+        )
+    finally:
+        # One release path for every way out: a returned result, a timeout, an
+        # error, or a cancellation. Shielded, because the cleanup awaits and
+        # the cancellation that sent us here would otherwise interrupt it.
+        deferred_cancellation = await uncancellable(
+            _release(memory_watchdog_task, child)
+        )
+
+    if deferred_cancellation:
+        # We were cancelled but swallowed it to finish releasing the child.
+        # Completing normally now would hide that from the caller.
+        raise asyncio.CancelledError
+    return result
+
+
+async def _collect_bounded(
+    child: Child,
+    *,
+    deadline: float,
+    memory_watchdog_task: Optional["asyncio.Task"],
+    timeout_seconds: int,
+    max_output_size: int,
+    tail: bool,
+    stdin_data: Optional[str],
+    stdin_write_timeout: Optional[int],
+) -> Result:
+    """
+    Feed, drain, and time a running child, and say how it turned out.
+
+    Every bound `run` promises lives here; everything about letting go of the
+    child lives in `Child.release`. That split is what lets `run` put a single
+    release on every exit path instead of repeating cleanup per outcome.
+    """
     write_ok = True
     if stdin_data is not None:
-        set_nonblocking(p.stdin)
         write_ok = await write_nonblocking_async(
-            fd=p.stdin,
+            fd=child.stdin,
             data=stdin_data.encode(),
             timeout_seconds=stdin_write_timeout
             if stdin_write_timeout is not None
             else 15,
         )
-        try:
-            p.stdin.close()  # ty:ignore[unresolved-attribute]
-        except (BrokenPipeError, BlockingIOError):
-            pass
+        child.close_stdin()
 
     bufs = await read_to_eof_async(
-        [p.stdout, p.stderr],
+        [child.stdout, child.stderr],
         timeout_seconds=timeout_seconds,
         max_len=max_output_size,
         tail=tail,
@@ -296,7 +356,7 @@ async def run(
     exit_code = None
     is_timeout = False
     while True:
-        rc = p.poll()
+        rc = child.poll()
         if rc is not None:
             exit_code = rc
             break
@@ -306,21 +366,11 @@ async def run(
             break
         await asyncio.sleep(min(0.05, remaining))
 
+    # Read the verdict the watchdog has already reached, if any; stopping it is
+    # the release path's job.
     memory_limit_exceeded = False
-    if memory_watchdog_task is not None:
-        if memory_watchdog_task.done():
-            memory_limit_exceeded = memory_watchdog_task.result()
-        else:
-            memory_watchdog_task.cancel()
-            try:
-                await memory_watchdog_task
-            except asyncio.CancelledError:
-                pass
-
-    try:
-        os.killpg(process_group_id, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+    if memory_watchdog_task is not None and memory_watchdog_task.done():
+        memory_limit_exceeded = memory_watchdog_task.result()
 
     exit_code = (
         -1
