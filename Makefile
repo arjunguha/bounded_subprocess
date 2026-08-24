@@ -1,10 +1,4 @@
-.PHONY: test typecheck build publish docs
-
-build:
-	uv build
-
-publish:
-	 uv publish
+.PHONY: test typecheck docs
 
 test:
 	uv run python -m pytest -m "not unsafe"

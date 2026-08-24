@@ -24,7 +24,3 @@ To cut a release:
 The workflow authenticates to PyPI with trusted publishing (OIDC), so there is
 no API token to manage. If a release fails one of the checks, delete the tag,
 fix the problem, and tag again.
-
-`make build` and `make publish` remain available for publishing by hand, which
-should not be necessary. `uv publish` prompts for credentials: the username is
-`__token__` and the password is in the keychain.
