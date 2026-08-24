@@ -1,6 +1,6 @@
 [project]
 name = "bounded_subprocess"
-version = "2.9.1"
+version = "2.9.2"
 authors = [
   { name="Arjun Guha" },
   { name="Ming-Ho Yee" },
