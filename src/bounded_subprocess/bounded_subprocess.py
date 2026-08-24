@@ -3,15 +3,12 @@ Synchronous subprocess execution with bounds on runtime and output size.
 """
 
 import subprocess
-import os
-import signal
 from typing import List, Optional
 import time
 
+from .child import Child
 from .util import (
     Result,
-    set_nonblocking,
-    MAX_BYTES_PER_READ,
     write_nonblocking_sync,
     read_to_eof_sync,
 )
@@ -59,38 +56,21 @@ def run(
     """
     deadline = time.time() + timeout_seconds
 
-    p = subprocess.Popen(
-        args,
-        env=env,
-        cwd=cwd,
-        stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=True,
-        bufsize=MAX_BYTES_PER_READ,
-    )
-    process_group_id = os.getpgid(p.pid)
-
-    set_nonblocking(p.stdout)
-    set_nonblocking(p.stderr)
+    child = Child.spawn(args, env=env, cwd=cwd, stdin=stdin_data is not None)
 
     if stdin_data is not None:
-        set_nonblocking(p.stdin)
         write_ok = write_nonblocking_sync(
-            fd=p.stdin,
+            fd=child.stdin,
             data=stdin_data.encode(),
             timeout_seconds=stdin_write_timeout
             if stdin_write_timeout is not None
             else 15,
         )
         # From what I recall, closing stdin is not necessary, but is customary.
-        try:
-            p.stdin.close()  # ty:ignore[unresolved-attribute]
-        except (BrokenPipeError, BlockingIOError):
-            pass
+        child.close_stdin()
 
     bufs = read_to_eof_sync(
-        [p.stdout, p.stderr],
+        [child.stdout, child.stderr],
         timeout_seconds=timeout_seconds,
         max_len=max_output_size,
         tail=tail,
@@ -105,17 +85,15 @@ def run(
     # both stdout and stderr explicitly, and then sleeps for an instant before
     # terminating normally. That program should not timeout.
     try:
-        exit_code = p.wait(timeout=max(0, deadline - time.time()))
+        exit_code = child.popen.wait(timeout=max(0, deadline - time.time()))
         is_timeout = False
     except subprocess.TimeoutExpired:
         exit_code = None
         is_timeout = True
 
-    try:
-        # Kills the process group. Without this line, test_fork_once fails.
-        os.killpg(process_group_id, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+    # Kills the process group -- without this, test_fork_once fails -- and
+    # reaps a timed-out child rather than leaving a zombie behind.
+    child.release_sync()
 
     # Even if the process terminates normally, if we failed to write everything to
     # stdin, we return -1 as the exit code.
