@@ -2,10 +2,29 @@ Use `uv run`to run and not `python`.
 
 ## Publishing Process
 
-Increment the version number as appropriate in pyproject.toml. Delete old
-builds from dist/. Run uv sync to update the lock file. Commit the changes,
-which should have just changes to pyproject.taml and uv.lock. Run `uv build`.
+Releases are automated by `.github/workflows/release.yml`. Pushing a tag named
+`bounded_subprocess-v<version>` publishes to PyPI, but only after the workflow
+confirms that the tagged commit is on `main`, that the tag version matches
+`version` in pyproject.toml, and that the test suite passes.
 
-At this point, stop and tell me to run `uv publish`. Do not try to automate
-this step. Remind me that I must enter __token__ for the username. It says that
-on the screen, but I don't read instructions. The password is in the keychain.
+To cut a release:
+
+1. Increment `version` in pyproject.toml.
+2. Run `uv sync` to update the lock file.
+3. Commit the changes, which should have just changes to pyproject.toml and
+   uv.lock, and get them onto `main`.
+4. Tag that commit `bounded_subprocess-v<version>` (matching pyproject.toml
+   exactly) and push the tag:
+
+   ```
+   git tag bounded_subprocess-v2.9.2
+   git push origin bounded_subprocess-v2.9.2
+   ```
+
+The workflow authenticates to PyPI with trusted publishing (OIDC), so there is
+no API token to manage. If a release fails one of the checks, delete the tag,
+fix the problem, and tag again.
+
+`make build` and `make publish` remain available for publishing by hand, which
+should not be necessary. `uv publish` prompts for credentials: the username is
+`__token__` and the password is in the keychain.
